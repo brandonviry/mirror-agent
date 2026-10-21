@@ -20,11 +20,11 @@ Contrairement à une base de données classique qui stocke du texte brut, **Mem0
 
 Le paquet Python `mem0ai` embarque **deux moteurs distincts** selon la classe importée :
 
-| Critère | Mode 1 : **Mem0 Cloud (`MemoryClient`)**<br>*(Implémenté actuellement dans `mem0_client.py`)* | Mode 2 : **Mem0 Open-Source (`Memory`)**<br>*(100 % Local dans la boîte — Cible P0/P1)* |
+| Critère | Mode 1 : **Mem0 Cloud (`MemoryClient`)**<br />*(Implémenté actuellement dans `mem0_client.py`)* | Mode 2 : **Mem0 Open-Source (`Memory`)**<br />*(100 % Local dans la boîte — Cible P0/P1)* |
 | :--- | :--- | :--- |
 | **Classe Python** | `from mem0.client.main import MemoryClient` | `from mem0 import Memory` |
 | **Hébergement** | **SaaS Externe** (`api.mem0.ai`) — rien à héberger | **Auto-hébergé dans le process Python** (aucun serveur externe requis) |
-| **Prérequis / Clés** | Compte sur [app.mem0.ai](https://app.mem0.ai) + 3 variables :<br>• `MEM0_API_KEY`<br>• `MEM0_ORG_ID`<br>• `MEM0_PROJECT_ID` | **Aucune clé Mem0 requise !**<br>S'appuie directement sur **ChromaDB** local + **Ollama** (ou OpenAI) |
+| **Prérequis / Clés** | Compte sur [app.mem0.ai](https://app.mem0.ai) + 3 variables : `MEM0_API_KEY`, `MEM0_ORG_ID`, `MEM0_PROJECT_ID` | **Aucune clé Mem0 requise !** S'appuie directement sur **ChromaDB** local + **Ollama** (ou OpenAI) |
 | **Stockage des données** | Serveurs distants de Mem0 | Dossier local (ex. `data/chroma_mem0`) |
 | **Coût & Quotas** | Gratuit jusqu'à un quota limité, puis payant | **100 % Gratuit et sans limite** |
 | **Confidentialité** | Les messages et documents transitent par l'API `mem0.ai` | **100 % Privé / Hors-Ligne** |
