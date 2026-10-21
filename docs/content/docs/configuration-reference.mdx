@@ -1,0 +1,41 @@
+---
+title: "Référence Exhaustive de Configuration & CLI (En cours...)"
+description: "Niveau 7 : Liste exhaustive des options de configuration avec leurs valeurs par défaut, variables d'environnement (.env) et usage des commandes CLI."
+---
+
+# Référence Exhaustive de Configuration & CLI
+
+> 🚧 **Statut : En cours de rédaction... (`...`)**
+> *Destination finale une fois validé : `docs/content/docs/configuration-reference.mdx`*
+
+---
+
+## 1. Options de `IndexConfiguration` et `Configuration` (`configuration.py`)
+
+| Option (`configurable`) | Type | Valeur par Défaut | Description |
+| :--- | :--- | :--- | :--- |
+| `user_id` | `str` | `"default"` | Identifiant de cloisonnement utilisateur |
+| `retriever_provider` | `Literal[...]` | `"chroma"` | Backend vectoriel (`chroma`, `elastic`, `pinecone`, `mongodb`) |
+| `embedding_model` | `str` | `"openai/text-embedding-3-small"` | Modèle d'embedding configuré |
+| `search_kwargs` | `dict` | `{}` | Filtres et paramètres top-k passés au retriever |
+| `query_model` | `str` | `"openai/gpt-4.1"` | Modèle principal de génération et routage |
+| `reasoning_model` | `str` | `"google/gemini-2.0-flash-thinking-exp-01-21"` | Modèle de raisonnement analytique |
+| `...` | `...` | `...` | *En cours...* |
+
+---
+
+## 2. Dictionnaire Exhaustif des Variables d'Environnement (`.env`)
+
+- Variables Obligatoires (`MEM0_USER_ID`, `MEM0_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `COHERE_API_KEY`) :
+  - `En cours...`
+- Variables Optionnelles (Pinecone, Elasticsearch, MongoDB, LangSmith, GCP, Obsidian) :
+  - `En cours...`
+
+---
+
+## 3. Usage du CLI (`langgraph`, `pytest`, `ruff`, `mypy`, `utils/` et `tools/`)
+
+- Commandes `langgraph dev` / `langgraph up` :
+  - `En cours...`
+- Scripts CLI dans `utils/` et `tools/` (`llm_api.py`, `search_engine.py`, `obsidian_indexer.py`) :
+  - `En cours...`

@@ -1,0 +1,41 @@
+---
+title: "Exigences Non-Fonctionnelles (En cours...)"
+description: "Niveau 9 : Performances, latence, sécurité des données personnelles, scalabilité et maintenabilité de Mirror Agent."
+---
+
+# Exigences Non-Fonctionnelles (Performances, Sécurité, Scalabilité, Maintenabilité)
+
+> 🚧 **Statut : En cours de rédaction... (`...`)**
+> *Destination finale une fois validé : `docs/content/docs/non-fonctionnel.mdx`*
+
+---
+
+## 1. Performances & Latence
+
+- Temps de chargement du modèle d'embedding local `BAAI/bge-large-en-v1.5` (~1,3 Go) et mécanisme de cache `~/.cache/mirror-agent` :
+  - `En cours...`
+- Latence par nœud LangGraph (appels séquentiels Mem0 + Chroma + CohereRerank + LLM) :
+  - `En cours...`
+
+---
+
+## 2. Sécurité & Confidentialité des Données Personnelles
+
+- Transit des notes personnelles d'introspection vers des API Cloud (Mem0 Cloud, OpenAI, Google, Cohere) :
+  - `En cours...`
+- Gestion des secrets (`.env`, `.gitignore`) et piste d'isolation 100 % locale (Ollama + Chroma + Mem0 OSS) :
+  - `En cours...`
+
+---
+
+## 3. Scalabilité
+
+- Limites du stockage local (`ChromaDB` SQLite + `indexed_files.json`) vs backends distribués (`Pinecone`, `MongoDB Atlas`, `Elasticsearch`) :
+  - `En cours...`
+
+---
+
+## 4. Maintenabilité & Qualité Logicielle
+
+- Standards de code (`Ruff`, `Mypy --strict`, Google Docstrings `D401`, interdiction de `print` `T201`) :
+  - `En cours...`

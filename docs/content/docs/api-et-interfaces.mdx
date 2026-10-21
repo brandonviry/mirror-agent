@@ -1,0 +1,46 @@
+---
+title: "API & Interfaces (En cours...)"
+description: "Niveau 6 : Endpoints REST du serveur LangGraph, interfaces Python des graphes, exemples de requêtes/réponses JSON et gestion des erreurs."
+---
+
+# API & Interfaces
+
+> 🚧 **Statut : En cours de rédaction... (`...`)**
+> *Destination finale une fois validé : `docs/content/docs/api-et-interfaces.mdx`*
+
+---
+
+## 1. Vue d'Ensemble des Interfaces Exposées
+
+- Graphes déclarés dans `langgraph.json` :
+  - `retrieval_graph` (`./src/retrieval_graph/graph.py:graph`)
+  - `indexer` (`./src/retrieval_graph/index_graph.py:graph`)
+- `En cours...`
+
+---
+
+## 2. API Python (`ainvoke` / `astream`)
+
+### 2.1 Paramètres d'entrée et `RunnableConfig`
+- `En cours...`
+
+### 2.2 Exemple de Requête et Réponse Complète
+- `En cours...`
+
+---
+
+## 3. Endpoints HTTP du Serveur LangGraph (`http://127.0.0.1:2024`)
+
+- `POST /threads` — Création d'une session de conversation
+- `POST /threads/{thread_id}/runs/wait` — Exécution synchrone d'un tour socratique
+- `POST /threads/{thread_id}/runs/stream` — Streaming SSE des nœuds du graphe
+- `POST /runs/wait` (Assistant `indexer`) — Ingestion de notes via HTTP
+- `En cours...`
+
+---
+
+## 4. Gestion des Erreurs & Codes de Retour
+
+- Erreurs de validation d'environnement (`ValueError: MEM0_USER_ID...`)
+- Erreurs d'API externes (`Mem0`, `OpenAI`, `Cohere`, `Google Gemini`)
+- `En cours...`

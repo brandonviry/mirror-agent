@@ -1,0 +1,35 @@
+---
+title: "Dépendances & Hypothèses (En cours...)"
+description: "Niveau 10 : Cartographie des services tiers externes, des librairies Python/Node critiques et des hypothèses d'exécution du projet."
+---
+
+# Dépendances & Hypothèses
+
+> 🚧 **Statut : En cours de rédaction... (`...`)**
+> *Destination finale une fois validé : `docs/content/docs/dependances-et-hypotheses.mdx`*
+
+---
+
+## 1. Services Tiers Externes (APIs Cloud)
+
+| Service Tiers | Rôle dans Mirror Agent | Criticité Actuelle | Peut-on s'en passer ? |
+| :--- | :--- | :--- | :--- |
+| **Mem0 Cloud (`api.mem0.ai`)** | Persistance des messages et souvenirs | Obligatoire par défaut | Oui via refonte P0/P1 (`Memory.from_config` local) |
+| **OpenAI API** | Modèle par défaut (`gpt-4.1`) | Obligatoire par défaut | Oui en changeant `query_model` |
+| **Google AI (Gemini)** | Raisonnement (`apply_reasoning`) | Obligatoire si `should_reason="reason"` | Voir `BUG-007` |
+| **Cohere API** | Re-ranking (`rerank-english-v3.0`) | Obligatoire avec ChromaDB | `En cours...` |
+| `...` | `...` | `...` | *En cours...* |
+
+---
+
+## 2. Dépendances Logicielles & Versions Verrouillées (`pyproject.toml`)
+
+- Pourquoi `torch==2.1.2`, `numpy==1.26.4` et `chromadb==0.5.23` sont épinglés strictement :
+  - `En cours...`
+
+---
+
+## 3. Hypothèses d'Exécution du Système
+
+- Connectivité réseau, structure du coffre Obsidian Markdown, encodage UTF-8, et mémoire RAM disponible pour PyTorch :
+  - `En cours...`

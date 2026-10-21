@@ -1,0 +1,29 @@
+---
+title: "Risques & Compromis Architecturaux (En cours...)"
+description: "Niveau 11 : Analyse de ce qui peut mal tourner (modes de défaillance) et justification des compromis architecturaux choisis."
+---
+
+# Risques & Compromis Architecturaux
+
+> 🚧 **Statut : En cours de rédaction... (`...`)**
+> *Destination finale une fois validé : `docs/content/docs/risques-et-compromis.mdx`*
+
+---
+
+## 1. Pourquoi avoir choisi cette approche ? (Compromis Architecturaux)
+
+- **Graphe d'états explicite (`LangGraph`) vs Chaîne linéaire ou Agent ReAct libre** :
+  - `En cours...`
+- **Architecture Hybride (`Mem0` pour la mémoire épisode/sémantique + `ChromaDB` pour les notes longues Obsidian)** :
+  - `En cours...`
+- **Séparation Modèle de Raisonnement (`Gemini Thinking`) / Modèle Socratique (`GPT-4.1`)** :
+  - `En cours...`
+
+---
+
+## 2. Ce qui peut mal tourner (Matrice des Risques & Modes de Défaillance)
+
+- **Risque 1 : Indisponibilité ou latence de l'API Mem0 dans les réducteurs d'état** (`En cours...`)
+- **Risque 2 : Dérive de coût ou boucle de recherche RAG** (`En cours...`)
+- **Risque 3 : Dépréciation du modèle expérimental `gemini-2.0-flash-thinking-exp-01-21`** (`En cours...`)
+- **Risque 4 : Désynchronisation entre le coffre Obsidian et l'index ChromaDB** (`En cours...`)
