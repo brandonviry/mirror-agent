@@ -4,6 +4,22 @@ Mirror Agent is an AI companion designed to help you understand yourself better 
 
 ---
 
+## Expérimentation de ce Fork : Amélioration par l'IA *Sans Exécution* (Zero-Runtime QA)
+
+> [!NOTE]
+> **Philosophie & Objectif de cette démarche**
+> Ce dépôt a été amélioré **sans jamais lancer l'application**. L'objectif est d'expérimenter l'amélioration incrémentale d'une base de code existante par l'IA uniquement par **analyse théorique**, lecture des contrats de types, inspection de l'historique Git et vérification statique.
+>
+> **La question centrale :**
+> *« Sans équipe de QA humaine, est-il actuellement possible pour une personne solo de vérifier et garantir que le code amélioré par l'IA est fonctionnel et robuste, sans exécuter le système complet et sans devoir superviser l'IA à 100 % ? »*
+
+### Comment valider la théorie sans lancer l'application ?
+1. **Analyse des invariants et des types** : Identifier les erreurs qui se produiraient à l'exécution par simple lecture des définitions (ex. découvrir que `AnyMessage` dans `langchain_core.messages` est un `typing.Union` non instanciable et non une classe concrète).
+2. **Corrélation entre gestion d'exceptions et assertions de tests** : Comprendre pourquoi un `try...except Exception:` trop large masque un `TypeError` interne en retournant `[]`, ce qui déplace le symptôme vers un échec d'assertion (`AssertionError`) plus loin dans les tests.
+3. **Conformité aux règles d'analyse statique** : Vérifier que le code respecte les contraintes du projet (`py_compile`, typage, règles Ruff comme `T201` interdisant `print()`) sans avoir besoin de clés API ni d'infrastructure active.
+
+---
+
 ## Architecture & Workflow
 
 Instead of a single monolithic script, Mirror Agent is structured as two **LangGraph** state graphs configured in [`langgraph.json`](./langgraph.json):
