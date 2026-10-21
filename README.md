@@ -1,85 +1,129 @@
 # Mirror Agent - Your AI Guide to Self-Reflection
 
-Mirror Agent is an innovative AI companion designed to help you understand yourself better through guided introspection and meaningful dialogue. Drawing inspiration from Socratic methods and modern psychological practices, it serves as a digital mirror, reflecting your thoughts and patterns back to you in ways that foster deeper self-awareness.
+Mirror Agent is an AI companion designed to help you understand yourself better through guided introspection and meaningful dialogue. Built on **LangGraph**, **LangChain**, **ChromaDB**, and **Mem0**, it combines Socratic questioning, persistent long-term memory, personal document retrieval (e.g., Obsidian notes), and multi-step reasoning.
 
-## The Vision
+---
 
-The inspiration behind Mirror Agent comes from the understanding that self-reflection is a powerful tool for personal growth, yet it's often challenging to practice effectively on our own. By combining AI capabilities with principles of introspective dialogue, Mirror Agent creates a unique space for:
+## Architecture & Workflow
 
-- **Socratic Guidance**: Asking thoughtful questions that encourage you to explore your thoughts and feelings more deeply
-- **Personalized Reflection**: Learning from your past interactions to provide increasingly meaningful and context-aware responses
-- **Memory-Enhanced Understanding**: Building a comprehensive understanding of your journey through careful documentation of your insights and patterns
-- **Self Exploration**: Offering a judgment-free space to explore your thoughts and feelings
+Instead of a single monolithic script, Mirror Agent is structured as two **LangGraph** state graphs configured in [`langgraph.json`](./langgraph.json):
 
-## Core Features
+1. **`retrieval_graph` ([`src/retrieval_graph/graph.py`](./src/retrieval_graph/graph.py))**: The main conversational and reasoning pipeline.
+2. **`indexer` ([`src/retrieval_graph/index_graph.py`](./src/retrieval_graph/index_graph.py))**: The document ingestion pipeline.
 
-- **Model-Agnostic Architecture**: Freedom to choose your preferred LLM backend
-- **Memory System**: Maintains context of your journey while respecting privacy
-- **Document Integration**: References your personal documents and past reflections
-- **Reflective Intelligence**: Helps identify patterns and insights in your thinking
-- **Multi-Modal Interface**: Supports text, audio, and video interactions
+```mermaid
+flowchart TD
+    Start(["__start__"]) --> ShouldRetrieve["should_retrieve\n(Decide if personal context is needed)"]
+    ShouldRetrieve -- "retrieve" --> GenerateQuery["generate_query\n(Formulate search query)"]
+    GenerateQuery --> Retrieve["retrieve\n(Search ChromaDB / Vector Store)"]
+    Retrieve --> ShouldReason["should_reason\n(Check if complex analysis is needed)"]
+    ShouldRetrieve -- "respond" --> ShouldReason
+    ShouldReason -- "reason" --> ApplyReasoning["apply_reasoning\n(Gemini 2.0 Flash Thinking)"]
+    ApplyReasoning --> Respond["respond\n(Generate final Socratic response)"]
+    ShouldReason -- "respond" --> Respond
+```
 
-## Getting Started
+### Key Components
+- [`src/retrieval_graph/graph.py`](./src/retrieval_graph/graph.py): Conditional routing between retrieval, reasoning (`gemini-2.0-flash-thinking-exp-01-21`), and response generation (`openai/gpt-4o`).
+- [`src/retrieval_graph/state.py`](./src/retrieval_graph/state.py): Graph state management (`State`, `InputState`, `IndexState`) backed by Mem0 reducers (`reduce_messages`, `reduce_docs`).
+- [`src/retrieval_graph/mem0_client.py`](./src/retrieval_graph/mem0_client.py): Client wrapper around `mem0.ai` for storing and retrieving user memories, messages, and documents.
+- [`utils/obsidian_monitor.py`](./utils/obsidian_monitor.py) & [`utils/obsidian_indexer.py`](./utils/obsidian_indexer.py): Automatic monitoring and indexing of local Obsidian markdown notes into ChromaDB.
 
-> **Important Note**: This project is a **LangGraph** application defined in [`langgraph.json`](./langgraph.json) (not a standalone `main.py` script). It exposes two graphs:
-> - `retrieval_graph` (`./src/retrieval_graph/graph.py:graph`): Conversational retrieval and reasoning graph.
-> - `indexer` (`./src/retrieval_graph/index_graph.py:graph`): Document indexing graph.
+---
+
+## Getting Started (Setup & First Launch)
+
+> [!IMPORTANT]
+> **No `main.py` file**: Earlier documentation referenced `python main.py`, which does not exist in this repository. Because this project is a **LangGraph** application defined in [`langgraph.json`](./langgraph.json), it is launched via the **LangGraph CLI (`langgraph dev`)** or tested via `pytest` / `unittest`.
 
 ### 1. Create a Virtual Environment & Install Dependencies
 
-```bash
+```powershell
+# Clone your fork
+git clone https://github.com/brandonviry/mirror-agent.git
+cd mirror-agent
+
+# Create and activate virtual environment
 python -m venv .venv
-# On Windows (PowerShell):
+# Windows (PowerShell):
 .\.venv\Scripts\Activate.ps1
-# On macOS/Linux:
+# macOS / Linux:
 source .venv/bin/activate
 
+# Install the package in editable mode with required tools
 pip install -e .
-pip install mem0ai langgraph-cli[inmem] pytest
+pip install mem0ai "langgraph-cli[inmem]" pytest
 ```
 
 ### 2. Configure Environment Variables (`.env`)
 
-Copy `.env.example` to `.env` and fill in your API keys:
+Copy [`.env.example`](./.env.example) to `.env` and fill in your credentials:
 
-```bash
-cp .env.example .env
+```powershell
+Copy-Item .env.example .env
 ```
 
-Required environment variables (note that `MEM0_USER_ID` is required at import time by `Mem0Memory`):
-- `OPENAI_API_KEY`: For the default query and response model (`openai/gpt-4o`)
-- `GOOGLE_API_KEY`: For the reasoning node (`gemini-2.0-flash-thinking-exp-01-21`)
-- `MEM0_API_KEY`, `MEM0_ORG_ID`, `MEM0_PROJECT_ID`: Your [mem0.ai](https://mem0.ai) credentials
-- `MEM0_USER_ID`: Unique identifier for the user (e.g., `test-user`)
+| Variable | Required | Description |
+| :--- | :---: | :--- |
+| `OPENAI_API_KEY` | Yes | Used by default for `query_model` and `response_model` (`openai/gpt-4o`) |
+| `GOOGLE_API_KEY` | If reasoning | Used by `apply_reasoning` (`gemini-2.0-flash-thinking-exp-01-21`) |
+| `MEM0_API_KEY` | Yes | Your [mem0.ai](https://mem0.ai) API key |
+| `MEM0_ORG_ID` | Yes | Your Mem0 Organization ID |
+| `MEM0_PROJECT_ID` | Yes | Your Mem0 Project ID |
+| `MEM0_USER_ID` | **Yes (at import)** | Unique user ID (e.g., `test-user`). Checked immediately when `Mem0Memory` initializes |
+| `MEM0_APP_ID` | Optional | Defaults to `mirror-agent` |
+| `MEM0_RUN_ID` | Optional | Defaults to `test-run` |
 
-### 3. Run the Agent
+### 3. Launch or Test the Project
 
-Start the local LangGraph development server (LangGraph Studio):
-
-```bash
+**Option A — Launch with LangGraph Studio / Dev Server:**
+```powershell
 langgraph dev
 ```
 
-Or run the test suites:
+**Option B — Run Static Verification & Unit Tests:**
+```powershell
+# Syntax & compilation check (no API keys required)
+python -m py_compile src/retrieval_graph/mem0_client.py
 
-```bash
 # Unit tests
 pytest tests/unit_tests
 
-# Mem0 integration tests
+# Mem0 integration tests (requires valid MEM0_* keys in .env)
 python -m unittest tests/test_mem0_integration.py
 ```
 
-## Recent Improvements (`mem0_client.py`)
+---
 
-- **Fixed `AnyMessage` instantiation bug**: Replaced invalid `AnyMessage(...)` calls (`typing.Union` cannot be instantiated at runtime) with concrete LangChain message classes (`HumanMessage`, `AIMessage`, `SystemMessage`) mapped from `metadata["message_type"]`.
-- **Granular error handling & logging**: Isolated storage retrieval errors from per-item parsing errors in `get_messages()` and `get_documents()`, replacing `print()` statements with structured `logging.exception()` calls (compliant with Ruff `T201`).
-- **Null-safe metadata and content parsing**: Added defensive checks when `metadata` or `additional_kwargs` is `None` and added fallback support for both `"text"` and `"memory"` payload keys.
+## Code Improvements: `mem0_client.py` Refactoring
 
-## Connect
+In [`src/retrieval_graph/mem0_client.py`](./src/retrieval_graph/mem0_client.py), `get_messages()` and `get_documents()` were refactored to fix critical runtime and testing issues:
 
-Created by [@daniel_mac8](https://twitter.com/daniel_mac8) on X
+1. **Fixed `AnyMessage` Instantiation Bug (`TypeError: Cannot instantiate typing.Union`)**:
+   - *Before*: `get_messages()` called `AnyMessage(content=..., type=..., additional_kwargs=...)`. In `langchain_core.messages`, `AnyMessage` is a `typing.Union` type alias, **not** an instantiable class. When wrapped in a broad `try...except`, the `TypeError` was silently caught and `get_messages()` always returned `[]`, causing test assertions (`self.assertTrue(...)` in [`tests/test_mem0_integration.py`](./tests/test_mem0_integration.py)) to fail.
+   - *After*: Mapped `metadata["message_type"]` via `MESSAGE_TYPES` to concrete LangChain message classes (`HumanMessage`, `AIMessage`, `SystemMessage`).
+
+2. **Granular Error Isolation (Storage vs. Item Parsing)**:
+   - *Before*: A single `try...except` block wrapped both `self.get_memories(...)` and the entire `for memory in memories:` loop. A single malformed entry aborted the loop.
+   - *After*: Network/API failures in `self.get_memories(...)` are caught separately from per-item parsing errors, so a single corrupted memory entry is skipped without losing the rest of the conversation history.
+
+3. **Structured Logging instead of `print()` (Ruff `T201` Compliance)**:
+   - *Before*: Used `print(f"Error retrieving messages: {e}")`, which violated the project's Ruff `T201` (`flake8-print`) rule in [`pyproject.toml`](./pyproject.toml) and discarded the stack trace.
+   - *After*: Uses `logger.exception(...)` and `logger.warning(...)` from Python's standard `logging` module.
+
+4. **Null-Safe Metadata & Payload Extraction**:
+   - *Before*: `memory.get("metadata", {}).get(...)` raised `AttributeError` if `"metadata"` existed in the dictionary with a value of `None`.
+   - *After*: Explicitly validates `isinstance(metadata, dict)` and supports both `"text"` and `"memory"` payload keys.
 
 ---
 
-Mirror Agent is more than just a chatbot - it's your companion in the journey of self-discovery and personal growth. Through thoughtful dialogue and persistent memory, it helps you understand your patterns, challenge your assumptions, and grow in self-awareness.
+## Core Features
+
+- **Model-Agnostic Architecture**: Choose your preferred LLM backend (`openai`, `anthropic`, `fireworks`, `google`).
+- **Memory System**: Persistent long-term memory via Mem0.
+- **Document Integration**: References personal documents and Obsidian vaults via ChromaDB.
+- **Reflective Intelligence**: Identifies patterns and insights using dedicated reasoning models.
+
+## Credits
+
+Originally created by [@daniel_mac8](https://twitter.com/daniel_mac8).
