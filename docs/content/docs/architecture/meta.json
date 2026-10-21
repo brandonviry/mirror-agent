@@ -2,6 +2,7 @@
   "title": "Architecture & Graphes",
   "pages": [
     "vue-ensemble",
+    "modele-donnees",
     "retrieval-graph",
     "index-graph-et-configuration"
   ]

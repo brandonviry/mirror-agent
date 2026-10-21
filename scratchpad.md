@@ -10,7 +10,7 @@
 - Ne jamais charger en entier les dumps bruts (`resources/dumps/langgraph.md` de 8,2 Mo) dans le contexte d'un LLM.
 - Dans `src/retrieval_graph/state.py`, `State` doit hériter de `InputState` (`class State(InputState):`) car `graph.py` accède à `state.messages` dans tous ses nœuds.
 - Dans `src/retrieval_graph/retrieval.py`, la sérialisation `pickle` sur `HuggingFaceEmbeddings` est un anti-pattern ; préférer `@functools.lru_cache` combiné au cache disque natif de HuggingFace.
-- Dans les fichiers `.mdx` de Fumadocs (`docs/content/docs/`), respecter le JSX strict : balises `<br />` auto-fermées et aucune accolade `{}` hors bloc de code (pas de formules LaTeX brutes `\frac{a}{b}`).
+- Dans les fichiers `.mdx` de Fumadocs (`docs/content/docs/`), respecter le JSX strict : balises `<br />` auto-fermées, aucune accolade `{}` hors bloc de code, et toujours entourer de guillemets doubles `"..."` les champs `title` et `description` du frontmatter YAML lorsqu'ils contiennent deux-points suivis d'un espace (`: `).
 - Suivi Hybride des Bugs : chaque bug (`BUG-001` à `BUG-009`) possède une fiche MDX dans `docs/content/docs/bugs/` ET une Issue GitHub synchronisée sur `brandonviry/mirror-agent` (`#1` à `#9`).
 
 # Scratchpad
@@ -25,7 +25,7 @@
   - Mise à jour de `AGENTS.md` et `GEMINI.md` avec le protocole hybride de suivi des bugs
 - [ ] **Prochains Piliers à traiter étape par étape (selon validation utilisateur)** :
   - [X] Pilier #3 : Quick Start (`quick-start.mdx` — Premier lancement en 5 min avec code court)
-  - [ ] Pilier #5 : Données & Modèles (`architecture/modele-donnees.mdx` — Schémas ER Mermaid Mem0, Chroma, LangGraph State)
+  - [X] Pilier #5 : Données & Modèles (`architecture/modele-donnees.mdx` — Schémas ER Mermaid Mem0, Chroma, LangGraph State)
   - [ ] Pilier #6 : API & Interfaces (`api-et-interfaces.mdx` — Endpoints LangGraph Server `/runs`, `/threads`, payloads JSON, erreurs)
   - [ ] Pilier #7 : Configuration Exhaustive & CLI (`configuration-reference.mdx` — Tableau complet des options, défauts, variables `.env` et CLI)
   - [ ] Pilier #9 : Exigences Non-Fonctionnelles (`non-fonctionnel.mdx` — Latence, coûts, sécurité, scalabilité)
