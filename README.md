@@ -21,18 +21,60 @@ The inspiration behind Mirror Agent comes from the understanding that self-refle
 
 ## Getting Started
 
-1. Set up your environment:
-   - Create a `.env` file with your preferred model configurations
+> **Important Note**: This project is a **LangGraph** application defined in [`langgraph.json`](./langgraph.json) (not a standalone `main.py` script). It exposes two graphs:
+> - `retrieval_graph` (`./src/retrieval_graph/graph.py:graph`): Conversational retrieval and reasoning graph.
+> - `indexer` (`./src/retrieval_graph/index_graph.py:graph`): Document indexing graph.
 
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 1. Create a Virtual Environment & Install Dependencies
 
-3. Start your journey:
-   ```bash
-   python main.py
-   ```
+```bash
+python -m venv .venv
+# On Windows (PowerShell):
+.\.venv\Scripts\Activate.ps1
+# On macOS/Linux:
+source .venv/bin/activate
+
+pip install -e .
+pip install mem0ai langgraph-cli[inmem] pytest
+```
+
+### 2. Configure Environment Variables (`.env`)
+
+Copy `.env.example` to `.env` and fill in your API keys:
+
+```bash
+cp .env.example .env
+```
+
+Required environment variables (note that `MEM0_USER_ID` is required at import time by `Mem0Memory`):
+- `OPENAI_API_KEY`: For the default query and response model (`openai/gpt-4o`)
+- `GOOGLE_API_KEY`: For the reasoning node (`gemini-2.0-flash-thinking-exp-01-21`)
+- `MEM0_API_KEY`, `MEM0_ORG_ID`, `MEM0_PROJECT_ID`: Your [mem0.ai](https://mem0.ai) credentials
+- `MEM0_USER_ID`: Unique identifier for the user (e.g., `test-user`)
+
+### 3. Run the Agent
+
+Start the local LangGraph development server (LangGraph Studio):
+
+```bash
+langgraph dev
+```
+
+Or run the test suites:
+
+```bash
+# Unit tests
+pytest tests/unit_tests
+
+# Mem0 integration tests
+python -m unittest tests/test_mem0_integration.py
+```
+
+## Recent Improvements (`mem0_client.py`)
+
+- **Fixed `AnyMessage` instantiation bug**: Replaced invalid `AnyMessage(...)` calls (`typing.Union` cannot be instantiated at runtime) with concrete LangChain message classes (`HumanMessage`, `AIMessage`, `SystemMessage`) mapped from `metadata["message_type"]`.
+- **Granular error handling & logging**: Isolated storage retrieval errors from per-item parsing errors in `get_messages()` and `get_documents()`, replacing `print()` statements with structured `logging.exception()` calls (compliant with Ruff `T201`).
+- **Null-safe metadata and content parsing**: Added defensive checks when `metadata` or `additional_kwargs` is `None` and added fallback support for both `"text"` and `"memory"` payload keys.
 
 ## Connect
 

@@ -29,13 +29,21 @@ Example (in Python):
     mem0.add_memory("This is a sample memory text.")
 """
 
+import logging
 import os
-from typing import Any, Optional, Sequence, List, Dict
+from typing import Any, Dict, List, Optional, Sequence
 
 from langchain.schema import Document
-from langchain_core.messages import AnyMessage
-
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
 from mem0.client.main import MemoryClient
+
+logger = logging.getLogger(__name__)
+
+MESSAGE_TYPES: Dict[str, type[HumanMessage | AIMessage | SystemMessage]] = {
+    "human": HumanMessage,
+    "ai": AIMessage,
+    "system": SystemMessage,
+}
 
 
 class Mem0Memory:
@@ -122,18 +130,41 @@ class Mem0Memory:
         Returns:
             Sequence[AnyMessage]: List of conversation messages.
         """
-        messages = []
         try:
             memories = self.get_memories(metadata={"type": "message"})
-            for memory in memories:
-                msg = AnyMessage(
-                    content=memory.get("text", ""),
-                    type=memory.get("metadata", {}).get("message_type", "human"),
-                    additional_kwargs=memory.get("metadata", {}).get("additional_kwargs", {})
+        except Exception:
+            logger.exception("Failed to retrieve message memories from storage")
+            return []
+
+        messages: List[AnyMessage] = []
+        for memory in memories or []:
+            if not isinstance(memory, dict):
+                logger.warning(
+                    "Skipping invalid memory entry (expected dict, got %s)",
+                    type(memory).__name__,
+                )
+                continue
+
+            metadata = memory.get("metadata")
+            if not isinstance(metadata, dict):
+                metadata = {}
+
+            content = memory.get("text") or memory.get("memory") or ""
+            msg_type = metadata.get("message_type") or "human"
+            additional_kwargs = metadata.get("additional_kwargs")
+            if not isinstance(additional_kwargs, dict):
+                additional_kwargs = {}
+
+            message_cls = MESSAGE_TYPES.get(msg_type, HumanMessage)
+            try:
+                msg = message_cls(
+                    content=str(content),
+                    additional_kwargs=additional_kwargs,
                 )
                 messages.append(msg)
-        except Exception as e:
-            print(f"Error retrieving messages: {e}")
+            except Exception:
+                logger.exception("Failed to parse memory into message: %s", memory)
+
         return messages
 
     def get_documents(self) -> Sequence[Document]:
@@ -142,15 +173,33 @@ class Mem0Memory:
         Returns:
             Sequence[Document]: List of stored documents.
         """
-        documents = []
         try:
             memories = self.get_memories(metadata={"type": "document"})
-            for memory in memories:
+        except Exception:
+            logger.exception("Failed to retrieve document memories from storage")
+            return []
+
+        documents: List[Document] = []
+        for memory in memories or []:
+            if not isinstance(memory, dict):
+                logger.warning(
+                    "Skipping invalid document memory entry (expected dict, got %s)",
+                    type(memory).__name__,
+                )
+                continue
+
+            metadata = memory.get("metadata")
+            if not isinstance(metadata, dict):
+                metadata = {}
+
+            content = memory.get("text") or memory.get("memory") or ""
+            try:
                 doc = Document(
-                    page_content=memory.get("text", ""),
-                    metadata=memory.get("metadata", {})
+                    page_content=str(content),
+                    metadata=metadata,
                 )
                 documents.append(doc)
-        except Exception as e:
-            print(f"Error retrieving documents: {e}")
+            except Exception:
+                logger.exception("Failed to parse memory into Document: %s", memory)
+
         return documents
