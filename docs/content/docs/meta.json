@@ -3,6 +3,7 @@
   "pages": [
     "---Introduction & Démarrage---",
     "index",
+    "quick-start",
     "installation",
     "zero-runtime-qa",
     "plan-projet",
