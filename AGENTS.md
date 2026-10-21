@@ -120,11 +120,16 @@ mirror-agent/
 │   ├── test_mem0_integration.py     # Tests d'intégration de Mem0Memory (messages, documents, souvenirs)
 │   ├── unit_tests/                  # Tests unitaires (ex. test_configuration.py)
 │   └── integration_tests/           # Tests d'intégration du graphe (test_graph.py)
-├── docs/                            # Application de documentation Fumadocs (Next.js + MDX en français)
+├── docs/                            # Application de documentation Fumadocs (Next.js 15 + MDX en français, déployée sur Vercel)
 │   ├── package.json                 # Scripts npm/pnpm (dev, build, start) et dépendances Fumadocs
 │   ├── source.config.ts             # Configuration Fumadocs MDX (content/docs)
-│   ├── app/                         # Routes Next.js App Router (accueil, /docs/[[...slug]], /api/search)
-│   └── content/docs/                # Source unique de la doc MDX (architecture, memoire-et-rag, roadmap P0->P3)
+│   ├── lib/metadata.ts              # Configuration SEO centralisée, OpenGraph, JSON-LD et URL canonique Vercel
+│   ├── app/                         # Routes Next.js App Router (accueil, /docs/[[...slug]], /api/search, sitemap.ts, robots.ts, llms.txt)
+│   └── content/docs/                # Source unique de la doc MDX :
+│       ├── architecture/            # Vue d'ensemble, RetrievalGraph, IndexGraph & Configuration
+│       ├── memoire-et-rag/          # Client Mem0 (Cloud vs Local), Obsidian & Retrievers, Évaluation RAG
+│       ├── bugs/                    # Registre des Bugs Connus & Contournements (BUG-001 à BUG-009 liés aux GitHub Issues #1 à #9)
+│       └── roadmap/                 # Feuille de route architecturale (Audit + RFCs P0 à P3)
 └── resources/dumps/                 # Dumps bruts de documentation externe isolés hors de docs/
     ├── chroma.md                    # Dump de référence externe ChromaDB (NE PAS TRADUIRE/ÉCRASER)
     ├── contextual_retrieval.txt     # Notes brutes Contextual Retrieval
@@ -152,8 +157,21 @@ mirror-agent/
    - La première ligne de chaque docstring doit être à **l'impératif** (règle Ruff `D401`, ex. `"""Retrieve stored conversation messages."""` et non `"""Retrieves..."""`).
 
 5. **Langue de la Documentation** :
-   - La documentation du projet (`README.md`, `AGENTS.md`, et les fichiers propres au projet dans `docs/`) est rédigée en **français**.
+   - La documentation du projet (`README.md`, `AGENTS.md`, `GEMINI.md`, et tous les fichiers `.mdx` dans `docs/content/docs/`) est rédigée en **français**.
    - Les docstrings et identifiants dans le code Python (`src/`) restent en **anglais** pour respecter les conventions des linters (`codespell`, `pydocstyle`).
+
+6. **Protocole Hybride de Gestion des Bugs (`docs/content/docs/bugs/` ↔ GitHub Issues)** :
+   - Tout bug identifié dans la codebase est répertorié simultanément sous forme :
+     1. D'une **Fiche Technique MDX** dans `docs/content/docs/bugs/bug-XXX-*.mdx` (indexée dans `docs/content/docs/bugs/meta.json` et `docs/content/docs/bugs/index.mdx`), documentant le symptôme, le fichier/ligne exact, la cause racine et le **contournement immédiat (*workaround*)**.
+     2. D'une **Issue GitHub officielle** sur `brandonviry/mirror-agent` via `gh issue create` avec les labels appropriés (`bug`, `contournement-dispo` ou `résolu`, et `priorité:P0`/`P1`/`P2`).
+   - Lorsqu'un bug ouvert (`BUG-004` à `BUG-009`, ou tout nouveau bug) est corrigé dans le code :
+     1. Ajouter un test unitaire de non-régression dans `tests/unit_tests/`.
+     2. Fermer l'Issue GitHub correspondante via `gh issue close <num> --repo brandonviry/mirror-agent --comment "Résolu dans le commit <sha>."` et remplacer le label `contournement-dispo` par `résolu`.
+     3. Mettre à jour la fiche MDX dans `docs/content/docs/bugs/` et le tableau synoptique `docs/content/docs/bugs/index.mdx` pour passer son statut de `🔴 OUVERT` à `🟢 RÉSOLU / FERMÉ`.
+
+7. **Règles Spécifiques à Fumadocs (`docs/`) et au Déploiement Vercel** :
+   - **Syntaxe MDX / JSX stricte** : Dans tous les fichiers `docs/content/docs/**/*.mdx`, les balises HTML doivent être auto-fermées (`<br />` et jamais `<br>`), et aucun caractère `<` ou `{` ne doit apparaître en dehors d'un bloc de code ou d'un composant JSX valide (ex. éviter les formules LaTeX brutes contenant `{...}` hors bloc de code).
+   - **Déploiement continu** : Le projet Vercel `mirror-agent-docs` (`https://mirror-agent-docs.vercel.app`) a pour racine `docs/`. Tout `git push origin main` déclenche la mise en production.
 
 ---
 
@@ -163,13 +181,13 @@ mirror-agent/
   - La règle Ruff **`T201`** (`flake8-print`) est activée dans `pyproject.toml`. Tout appel à `print()` dans `src/` fera échouer le linter. Utilisez exclusivement le module `logging` (`logger = logging.getLogger(__name__)`, `logger.info`, `logger.warning`, `logger.exception`).
 
 - **INTERDIT d'instancier `AnyMessage(...)` directement** :
-  - Provoque un `TypeError: Cannot instantiate typing.Union` à l'exécution. Passez toujours par `MESSAGE_TYPES.get(msg_type, HumanMessage)`.
+  - Provoque un `TypeError: Cannot instantiate typing.Union` à l'exécution (`BUG-001`). Passez toujours par `MESSAGE_TYPES.get(msg_type, HumanMessage)`.
 
 - **INTERDIT d'englober un appel réseau et une boucle de parsing dans un seul `try...except Exception` muet** :
-  - Séparez toujours le `try...except` de récupération réseau (`self.get_memories(...)`) du `try...except` d'instanciation de chaque élément dans la boucle `for`, afin qu'une entrée malformée n'annule pas toute la liste retournée et que l'erreur exacte soit tracée via `logger.exception(...)`.
+  - Séparez toujours le `try...except` de récupération réseau (`self.get_memories(...)`) du `try...except` d'instanciation de chaque élément dans la boucle `for` (`BUG-002`), afin qu'une entrée malformée n'annule pas toute la liste retournée et que l'erreur exacte soit tracée via `logger.exception(...)`.
 
 - **INTERDIT de chainer `.get("metadata", {}).get(...)` sans vérifier le type** :
-  - Si la clé `"metadata"` existe dans la réponse JSON avec la valeur `None`, `.get("metadata", {})` renvoie `None` et provoque un `AttributeError: 'NoneType' object has no attribute 'get'`. Vérifiez toujours `if not isinstance(metadata, dict): metadata = {}`.
+  - Si la clé `"metadata"` existe dans la réponse JSON avec la valeur `None`, `.get("metadata", {})` renvoie `None` et provoque un `AttributeError: 'NoneType' object has no attribute 'get'` (`BUG-002`). Vérifiez toujours `if not isinstance(metadata, dict): metadata = {}`.
 
 - **INTERDIT d'imbriquer les filtres Mem0 sous une clé `"filters"`** :
   - Envoyer `{"text": ..., "filters": {"user_id": ...}}` à l'API Mem0 provoque une erreur `HTTP 400`. Les clés `user_id`, `agent_id`, `app_id` et `run_id` doivent rester au niveau racine du payload.
@@ -177,8 +195,11 @@ mirror-agent/
 - **INTERDIT de créer ou chercher un fichier `main.py`** :
   - Ce projet est un graphe **LangGraph** régi par `langgraph.json`. Les points d'entrée sont `src/retrieval_graph/graph.py:graph` et `src/retrieval_graph/index_graph.py:graph`.
 
-- **INTERDIT de lire en entier ou de modifier `docs/langgraph.md` (8,2 Mo) et `docs/chroma.md` (100 Ko)** :
-  - Ce sont des dumps bruts de documentation externe servant de base de connaissance locale. Ne les chargez jamais intégralement dans le contexte LLM (utilisez `grep` ou des lectures ciblées par lignes si nécessaire) et ne les traduisez pas.
+- **INTERDIT d'exécuter `pnpm install` ou `npm install` dans `docs/` depuis le terminal de l'agent** :
+  - Les dépendances Node.js sont déjà installées dans `docs/node_modules` et le build cloud est assuré par Vercel en ~35 secondes. Lancer un gestionnaire de paquets Node en sous-processus bloque le terminal.
+
+- **INTERDIT de lire en entier ou de modifier `resources/dumps/langgraph.md` (8,2 Mo), `resources/dumps/mem0ai-mem0.txt` (2,1 Mo) et `resources/dumps/chroma.md` (100 Ko)** :
+  - Ce sont des dumps bruts de documentation externe servant de base de connaissance locale. Ne les chargez jamais intégralement dans le contexte LLM (utilisez `grep` ou des lectures ciblées par lignes si nécessaire) et ne les déplacez jamais dans `docs/`.
 
 - **INTERDIT de commiter des clés API ou le fichier `.env`** :
   - Seul `.env.example` doit être suivi par Git. Vérifiez toujours `git status` et `git diff` avant un commit.

@@ -39,8 +39,17 @@ Ce fichier définit la posture, la langue, le format de communication, les princ
    - Après chaque modification de code Python, exécuter systématiquement une vérification statique (`python -m py_compile ...` et `python -m ruff check ...`).
 
 4. **Protection du Contexte et des Secrets** :
-   - Ne jamais lire intégralement des dumps massifs (tels que `docs/langgraph.md` qui pèse 8,2 Mo) : procéder uniquement par recherche ciblée (`grep`) ou lecture bornée.
+   - Ne jamais lire intégralement des dumps massifs situés dans `resources/dumps/` (`langgraph.md` 8,2 Mo, `mem0ai-mem0.txt` 2,1 Mo, `chroma.md` 100 Ko) : procéder uniquement par recherche ciblée (`grep`) ou lecture bornée.
    - Ne jamais exposer, afficher en clair ou commiter le contenu de `.env` ou des clés API.
+
+5. **Suivi Hybride des Bugs (`docs/content/docs/bugs/` + GitHub Issues)** :
+   - Avant de diagnostiquer un comportement anormal ou de modifier un module, consulter le registre [`docs/content/docs/bugs/index.mdx`](./docs/content/docs/bugs/index.mdx) (`BUG-001` à `BUG-009`).
+   - Tout nouveau bug identifié doit faire l'objet à la fois d'une **Issue GitHub** (`gh issue create --repo brandonviry/mirror-agent`) et d'une **fiche MDX** dans `docs/content/docs/bugs/` détaillant son symptôme, sa cause racine et son contournement (*workaround*).
+   - Toute résolution de bug doit s'accompagner d'un test unitaire (`tests/unit_tests/`), de la fermeture de l'Issue GitHub (`gh issue close`) et du passage de la fiche MDX au statut `🟢 RÉSOLU / FERMÉ`.
+
+6. **Construction Incrémentale de la Documentation Fumadocs (`docs/`)** :
+   - Avancer **étape par étape (pilier par pilier)** et valider chaque bloc avec l'utilisateur avant de passer au suivant.
+   - Veiller à ce que chaque fichier `.mdx` respecte la syntaxe JSX stricte (balises `<br />` auto-fermées, aucune accolade `{}` hors bloc de code) afin de garantir un build Vercel (`https://mirror-agent-docs.vercel.app`) sans erreur.
 
 ---
 

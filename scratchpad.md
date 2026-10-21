@@ -10,17 +10,25 @@
 - Ne jamais charger en entier les dumps bruts (`resources/dumps/langgraph.md` de 8,2 Mo) dans le contexte d'un LLM.
 - Dans `src/retrieval_graph/state.py`, `State` doit hériter de `InputState` (`class State(InputState):`) car `graph.py` accède à `state.messages` dans tous ses nœuds.
 - Dans `src/retrieval_graph/retrieval.py`, la sérialisation `pickle` sur `HuggingFaceEmbeddings` est un anti-pattern ; préférer `@functools.lru_cache` combiné au cache disque natif de HuggingFace.
+- Dans les fichiers `.mdx` de Fumadocs (`docs/content/docs/`), respecter le JSX strict : balises `<br />` auto-fermées et aucune accolade `{}` hors bloc de code (pas de formules LaTeX brutes `\frac{a}{b}`).
+- Suivi Hybride des Bugs : chaque bug (`BUG-001` à `BUG-009`) possède une fiche MDX dans `docs/content/docs/bugs/` ET une Issue GitHub synchronisée sur `brandonviry/mirror-agent` (`#1` à `#9`).
 
 # Scratchpad
 
-## Mission Actuelle : Refonte Complète de `docs/` avec Fumadocs (Next.js + Fumadocs MDX)
-Objectif : Transformer `docs/` en une véritable application de documentation moderne basée sur **Fumadocs** (`fumadocs-ui`, `fumadocs-core`, `fumadocs-mdx`) entièrement en français, et isoler les dumps bruts scrappés dans `resources/dumps/`.
+## Mission Actuelle : Complétion Étape par Étape des 12 Piliers de la Documentation Fumadocs (`https://mirror-agent-docs.vercel.app`)
 
-- [X] Isoler les dumps bruts (`langgraph.md`, `chroma.md`, `mem0ai-mem0.txt`, `contextual_retrieval.txt`) dans `resources/dumps/`
-- [X] Configurer l'application Next.js + Fumadocs dans `docs/` (`package.json`, `source.config.ts`, `next.config.mjs`, `app/`, `lib/source.ts`)
-- [X] Créer l'arborescence structurée MDX dans `docs/content/docs/` avec `meta.json` :
-  - `index.mdx`, `installation.mdx`, `zero-runtime-qa.mdx`, `plan-projet.mdx`
-  - `architecture/` (`vue-ensemble.mdx`, `retrieval-graph.mdx`, `index-graph-et-configuration.mdx`)
-  - `memoire-et-rag/` (`mem0-client.mdx`, `obsidian-et-retrievers.mdx`, `ameliorer-et-evaluer-rag.mdx`)
-  - `roadmap/` (`index.mdx`, `00-audit-codebase.mdx`, `01-p0-decouplage-etat.mdx`, `02-p1-fournisseurs-locaux-ollama.mdx`, `03-p1-boucle-reflexive.mdx`, `04-p2-rag-hybride-obsidian.mdx`, `05-p3-observabilite-tests-ui.mdx`)
-- [X] Mettre à jour `.gitignore`, `README.md`, `AGENTS.md` et `scratchpad.md`
+- [X] **Socle Fumadocs, SEO & Déploiement Continu Vercel** (`/sitemap.xml`, `/robots.txt`, `/llms.txt`, OpenGraph, JSON-LD)
+- [X] **Pilier #8 — Limites connues, Bugs & Contournements (`docs/content/docs/bugs/` + GitHub Issues `#1` à `#9`)** :
+  - Issues `#1`, `#2`, `#3` créées et fermées (`BUG-001` à `BUG-003` résolus dans `60c5871`)
+  - Issues `#4` à `#9` créées et ouvertes (`BUG-004` à `BUG-009` avec contournements documentés)
+  - 10 fichiers créés dans `docs/content/docs/bugs/` et déployés en production (`HTTP 200` sur `/docs/bugs`)
+  - Mise à jour de `AGENTS.md` et `GEMINI.md` avec le protocole hybride de suivi des bugs
+- [ ] **Prochains Piliers à traiter étape par étape (selon validation utilisateur)** :
+  - [ ] Pilier #3 : Quick Start (`quick-start.mdx` — Premier lancement en 5 min avec code court)
+  - [ ] Pilier #5 : Données & Modèles (`architecture/modele-donnees.mdx` — Schémas ER Mermaid Mem0, Chroma, LangGraph State)
+  - [ ] Pilier #6 : API & Interfaces (`api-et-interfaces.mdx` — Endpoints LangGraph Server `/runs`, `/threads`, payloads JSON, erreurs)
+  - [ ] Pilier #7 : Configuration Exhaustive & CLI (`configuration-reference.mdx` — Tableau complet des options, défauts, variables `.env` et CLI)
+  - [ ] Pilier #9 : Exigences Non-Fonctionnelles (`non-fonctionnel.mdx` — Latence, coûts, sécurité, scalabilité)
+  - [ ] Pilier #10 : Dépendances & Hypothèses (`dependances-et-hypotheses.mdx` — Matrice des services tiers et versions critiques)
+  - [ ] Pilier #11 : Risques & Compromis (`risques-et-compromis.mdx` — ADR et analyse de défaillance)
+  - [ ] Pilier #12 : Guide de Contribution (`CONTRIBUTING.md` + `contribution.mdx`)
