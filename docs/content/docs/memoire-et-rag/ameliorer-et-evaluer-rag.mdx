@@ -1,0 +1,42 @@
+---
+title: Améliorer & Évaluer le Pipeline RAG (Weave)
+description: Méthodologie d'amélioration systématique du RAG (Jason Liu) et évaluation automatisée avec Weights & Biases Weave.
+---
+
+Cette page synthétise la méthodologie d'amélioration continue des systèmes RAG (inspirée des travaux de **Jason Liu** — *Systematically Improving Your RAG*) et son implémentation concrète dans Mirror Agent via **Weights & Biases Weave** (`utils/eval_rag_pipeline.py`).
+
+---
+
+## 1. Les 7 Piliers d'un Système RAG Performant
+
+1. **Commencer avec des Données Synthétiques** :
+   - L'erreur la plus fréquente consiste à modifier le prompt de réponse sans vérifier si le retriever remonte les bons documents.
+   - Générez des paires Question/Réponse synthétiques à partir de vos propres segments de texte (`utils/generate_synthetic_questions.py`) pour mesurer objectivement le rappel (*recall*) et la précision de base.
+2. **Exploiter les Métadonnées et la Compréhension de Requête** :
+   - Une recherche vectorielle ou plein texte seule ne peut pas répondre à *« Quels sont mes derniers écrits sur X ? »* sans extraire la plage temporelle et filtrer sur les métadonnées (date, auteur, tags).
+3. **Combiner Recherche Plein Texte, Vectorielle et Re-ranking** :
+   - La recherche lexicale (BM25) excelle sur les termes exacts et noms propres ; la recherche vectorielle capture la proximité sémantique ; le re-ranking (`CohereRerank` ou `CrossEncoder` local) affine le top-K final.
+4. **Collecter un Retour Utilisateur Explicite** :
+   - Posez une question ciblée (*« Avons-nous répondu correctement à votre question ? Oui / Non »*) pour isoler la qualité factuelle de la latence ou du ton.
+5. **Regrouper les Requêtes par Thématiques (*Topic Clustering*)** :
+   - Identifiez les sujets où la documentation est lacunaire et les types de questions qui exigent de nouvelles capacités (comme le nœud `apply_reasoning` pour les questions analytiques complexes).
+6. **Surveiller et Expérimenter en Continu** :
+   - Tracez chaque modification de paramètre (`k`, `chunk_size`, modèle d'embedding) avec un outil d'évaluation reproductible.
+7. **Équilibrer Latence et Rappel** :
+   - Mesurez systématiquement le coût en latence d'une fonctionnalité (ex. re-ranking ou reformulation de requête) par rapport au gain réel de rappel sur votre jeu de données synthétique.
+
+---
+
+## 2. Évaluation Automatisée avec Weave (`utils/eval_rag_pipeline.py`)
+
+**Weave** ([https://weave-docs.wandb.ai/](https://weave-docs.wandb.ai/)) est la boîte à outils de **Weights & Biases** permettant de tracer et d'évaluer les applications LLM à l'aide du décorateur `@weave.op()` et de la classe `weave.Evaluation`.
+
+### Fonctionnement dans Mirror Agent
+1. **Génération du jeu de test (`utils/generate_synthetic_questions.py`)** :
+   - Extrait des segments de notes Obsidian indexées dans ChromaDB et génère des paires `{question, expected_answer}` sauvegardées en JSON.
+2. **Exécution de l'évaluation (`utils/eval_rag_pipeline.py`)** :
+   - Initialise le suivi avec `weave.init("obsidian-rag-eval")`.
+   - La fonction `evaluate_retrieval_only(question, expected)` décorée avec `@weave.op()` interroge le retriever ChromaDB (`k=5`) via `make_retriever(config)`.
+   - Calcule deux métriques agrégées via `weave.Evaluation` :
+     - `exact_match_metric` : Proportion de questions pour lesquelles l'extrait attendu figure dans les `k` documents récupérés.
+     - `similarity_score_metric` : Score moyen de proximité entre le passage attendu et les segments remontés.

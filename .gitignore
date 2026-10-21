@@ -14,7 +14,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/lib/
 lib64/
 parts/
 sdist/
@@ -25,6 +25,8 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+!docs/lib/
+!docs/lib/**
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -175,3 +177,11 @@ data/indexed_files.json
 
 # windsurf rules
 .windsurfrules
+
+# Fumadocs / Next.js build & dependencies
+docs/node_modules/
+docs/.next/
+docs/.source/
+docs/out/
+docs/next-env.d.ts
+docs/*.tsbuildinfo

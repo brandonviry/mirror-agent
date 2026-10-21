@@ -1,0 +1,59 @@
+---
+title: Plan de Projet & Feuille de Route
+description: Vue d'ensemble des objectifs initiaux, des composants requis et de l'état d'avancement des 10 phases de Mirror Agent.
+---
+
+## Vue d'ensemble
+
+Le **Mirror Agent** a été conçu autour de quatre principes directeurs :
+- **Indépendant du modèle (Model-agnostic)** : L'utilisateur choisit et configure le LLM sous-jacent pour les requêtes, le raisonnement et les réponses.
+- **Socratique et réflexif** : Encourage l'exploration des pensées et émotions par des questions ouvertes.
+- **Enrichi par la mémoire (`Mem0`)** : Maintient le contexte propre à l'utilisateur, l'historique des conversations et les documents personnels.
+- **Extensible via LangGraph** : Coordonne dynamiquement le retriever documentaire (`ChromaDB` / Obsidian) et le module de raisonnement analytique (`Gemini 2.0 Flash Thinking`).
+
+---
+
+## Phases du Projet & État d'Avancement
+
+### Phase 1 : Configuration Initiale et Fonctionnalités de Base (Terminé)
+- Mise en place de la structure du projet LangGraph (`src/retrieval_graph/`)
+- Implémentation du chargement de documents de base (`IndexGraph`)
+- Intégration des bases vectorielles (Chroma, Pinecone, Elasticsearch, MongoDB)
+- Création du mécanisme de recherche initial
+
+### Phase 2 : Traitement Avancé des Documents (Terminé)
+- Prise en charge des coffres Obsidian et fichiers Markdown (`utils/obsidian_indexer.py`)
+- Implémentation des stratégies de découpage (chunking)
+- Extraction de métadonnées et horodatage
+- Détection automatique des modifications de fichiers (`utils/obsidian_monitor.py`)
+
+### Phase 3 : Optimisation de la Recherche RAG (Terminé)
+- Optimisation des requêtes vers la base vectorielle (`generate_query`)
+- Mise en cache des modèles d'embeddings HuggingFace (`BAAI/bge-large-en-v1.5`)
+- Intégration de la compression contextuelle et du re-ranking via `CohereRerank` (`rerank-english-v3.0`)
+- Filtrage conditionnel en amont (`should_retrieve`)
+
+### Phase 4 : Intégration de la Mémoire (Mem0) et Raisonnement (Terminé)
+- Intégration complète du client `Mem0Memory` (`src/retrieval_graph/mem0_client.py`)
+- Persistance automatique de l'état via les réducteurs `reduce_messages` et `reduce_docs`
+- Ajout du routage de raisonnement (`should_reason`) et du nœud analytique (`apply_reasoning` avec Gemini 2.0 Flash Thinking)
+- Fiabilisation et refactoring de `mem0_client.py` (instanciation concrète via `MESSAGE_TYPES`, isolation des erreurs de parsing, conformité Ruff `T201` avec `logging`)
+
+### Phase 4.5 : Évaluation et Optimisation du RAG (Terminé)
+- Conception du cadre d'évaluation (`utils/eval_rag_pipeline.py`)
+- Génération de questions synthétiques (`utils/generate_synthetic_questions.py`)
+- Génération automatisée de documentation technique (`tools/docs_generator.py`)
+
+### Phase 5 : Surveillance et Observabilité (En cours)
+- Intégration de la journalisation Google Cloud Platform (`utils/gcp_logging.py`) :
+  - Logs structurés pour les opérations d'indexation
+  - Suivi des métriques de performance et des échecs par lot (batch)
+- Découplage du logging pour exécution locale sans identifiants GCP (spécifié dans [RFC P3](/docs/roadmap/05-p3-observabilite-tests-ui))
+
+### Phases 6 à 10 : Prochaines Étapes (Spécifiées dans la Feuille de Route)
+Les prochaines phases d'évolution majeure font l'objet de spécifications techniques dédiées dans la section **[Feuille de Route (RFCs)](/docs/roadmap)** :
+- **[P0 — Découplage de l'État & Injection de Dépendances](/docs/roadmap/01-p0-decouplage-etat)**
+- **[P1 — Fournisseurs Locaux (Ollama, vLLM, Reranker Local)](/docs/roadmap/02-p1-fournisseurs-locaux-ollama)**
+- **[P1 — Boucle Réflexive (`Reflector Node`) & Mémoire Épisodique](/docs/roadmap/03-p1-boucle-reflexive)**
+- **[P2 — Pipeline RAG Hybride Obsidian (`BM25` + `[[WikiLinks]]`)](/docs/roadmap/04-p2-rag-hybride-obsidian)**
+- **[P3 — Observabilité Découplée, Tests Zero-Runtime & Interface UI](/docs/roadmap/05-p3-observabilite-tests-ui)**

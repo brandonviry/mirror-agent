@@ -1,0 +1,59 @@
+---
+title: "04 [P2] — Pipeline RAG Hybride Obsidian"
+description: Unification de l'ingestion Markdown Obsidian, recherche hybride (BM25 + Vecteurs) et exploitation du graphe [[WikiLinks]].
+---
+
+- **Priorité** : **P2 (Moyenne — Qualité de Recherche RAG & Cohérence d'Ingestion)**
+- **Périmètre impacté** : `utils/obsidian_indexer.py`, `utils/obsidian_monitor.py`, `src/retrieval_graph/index_graph.py`, `src/retrieval_graph/retrieval.py`
+
+---
+
+## 1. Contexte & Limites Actuelles
+
+1. **Divergence entre `obsidian_indexer.py` et `IndexGraph`** :
+   - `obsidian_indexer.py` écrit directement dans ChromaDB avec `langchain_chroma.Chroma`, sans `user_id`, avec un découpage fixe `RecursiveCharacterTextSplitter(chunk_size=3000, chunk_overlap=0)`.
+   - `index_graph.py` écrit via `retrieval.make_retriever` avec `langchain_community.vectorstores.Chroma`, ajoute `user_id`, mais ne découpe pas les documents et envoie tout le texte brut dans `Mem0` via `reduce_docs`.
+2. **Perte de la richesse sémantique propre à Obsidian** :
+   - Le **Frontmatter YAML** (dates, tags, alias, humeur), les **liens internes `[[WikiLinks]]`**, les **tags `#thème`** et la hiérarchie de titres Markdown (`#`, `##`, `###`) ne sont pas exploités.
+3. **Absence de Recherche Hybride (Lexicale + Sémantique) et de Filtrage Temporel** :
+   - La recherche vectorielle seule échoue sur les noms propres exacts, les dates relatives (*« mes notes du mois dernier »*) ou les tags précis.
+4. **Surveillance par Polling Processus (`psutil`) dans `obsidian_monitor.py`** :
+   - `obsidian_monitor.py` scrute en boucle si l'application `Obsidian` tourne en mémoire au lieu d'écouter les événements fichiers `.md`.
+
+---
+
+## 2. Spécifications Techniques
+
+### A. Parsing Riche des Notes Obsidian & *Contextual Chunking*
+Création d'un module unifié `src/retrieval_graph/obsidian_parser.py` appelé à la fois par `IndexGraph` et `obsidian_indexer.py` :
+- **Extraction des métadonnées** : `note_title`, `wikilinks` (`r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]"`), `tags` (YAML + inline `#tag`), `modified_ts` (entier Unix pour filtres `$gte` / `$lte`).
+- **Découpage hiérarchique** : `MarkdownHeaderTextSplitter` sur `["#", "##", "###"]` suivi de `RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)`.
+- **Contextual Retrieval** : Préfixage de chaque segment avant calcul de l'embedding :
+  ```text
+  [Note: Journal 2026-10 | Section: Objectifs > Carrière | Tags: #introspection #travail | Liens: [[Projet X]]]
+  <Contenu du segment...>
+  ```
+
+### B. Schéma de Requête Enrichi (`generate_query`) & Recherche Hybride
+
+```python
+from typing import Optional
+from pydantic import BaseModel, Field
+
+
+class SearchQuery(BaseModel):
+    """Structured search query with optional metadata filters."""
+
+    query: str = Field(description="Semantic and lexical search query.")
+    tag_filter: Optional[str] = Field(
+        default=None,
+        description="Optional tag to filter by (e.g. 'travail', 'relations').",
+    )
+    min_date_iso: Optional[str] = Field(
+        default=None,
+        description="Optional ISO-8601 start date if the user asks about a specific time range.",
+    )
+```
+
+- **Recherche Hybride (`EnsembleRetriever`)** : Combinaison de **60 %** recherche vectorielle dense (ChromaDB) et **40 %** recherche lexicale exacte (`BM25Retriever`), suivie d'une expansion 1-hop des notes liées `[[WikiLinks]]` avant le passage au Reranker.
+- **Surveillance `watchdog`** : Remplacement du polling `psutil` dans `utils/obsidian_monitor.py` par `watchdog.observers.Observer` avec anti-rebond (*debounce*) de 5 secondes et ré-indexation incrémentale du seul fichier modifié.

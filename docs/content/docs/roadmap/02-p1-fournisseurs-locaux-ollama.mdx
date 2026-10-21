@@ -1,0 +1,110 @@
+---
+title: "02 [P1] — Fournisseurs Locaux & Ollama"
+description: Architecture Multi-Providers permettant l'exécution 100 % locale avec Ollama (Chat, Thinking, Embeddings) et Reranker CrossEncoder.
+---
+
+- **Priorité** : **P1 (Haute — Flexibilité Modèles, Indépendance Cloud & Confidentialité)**
+- **Périmètre impacté** : `src/retrieval_graph/utils.py`, `src/retrieval_graph/configuration.py`, `src/retrieval_graph/graph.py`, `src/retrieval_graph/retrieval.py`, `utils/obsidian_indexer.py`
+
+---
+
+## 1. Objectifs
+
+1. **Support de premier ordre pour Ollama (100 % Local & Gratuit)** :
+   - Permettre de faire tourner l'intégralité de Mirror Agent (requêtes, raisonnement, réponses, embeddings, reranking et indexation Obsidian) sur une machine locale via **Ollama**, sans aucune clé API externe.
+2. **Support des passerelles OpenAI-compatibles (OpenRouter, vLLM, LM Studio, Groq)** :
+   - Utiliser n'importe quel modèle via `openrouter/<auteur>/<modele>` ou `local/<modele>`.
+3. **Découplage complet du nœud `apply_reasoning`** :
+   - Supprimer le modèle Gemini codé en dur dans `graph.py` et extraire automatiquement les balises `<think>...</think>` produites par les modèles de raisonnement locaux (`ollama/deepseek-r1`, `ollama/qwq`).
+4. **Embeddings & Reranking modulaires** :
+   - Ajouter `ollama/<embedding-model>` (`ollama/nomic-embed-text`, `ollama/mxbai-embed-large`) et un **Reranker local (`CrossEncoder` / `BAAI/bge-reranker-base`)** pour remplacer `CohereRerank` hors-ligne.
+
+---
+
+## 2. Spécifications d'Implémentation
+
+### A. Refonte de `load_chat_model` dans `src/retrieval_graph/utils.py`
+
+```python
+import os
+import re
+from langchain.chat_models import init_chat_model
+from langchain_core.language_models import BaseChatModel
+
+
+def load_chat_model(
+    fully_specified_name: str,
+    *,
+    temperature: float = 0.2,
+) -> BaseChatModel:
+    """Load a chat model from a 'provider/model-name' specification."""
+    if "/" in fully_specified_name:
+        provider, model = fully_specified_name.split("/", maxsplit=1)
+    else:
+        provider = "openai"
+        model = fully_specified_name
+
+    provider = provider.lower().strip()
+
+    if provider == "ollama":
+        from langchain_ollama import ChatOllama
+
+        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        return ChatOllama(model=model, base_url=base_url, temperature=temperature)
+
+    if provider == "openrouter":
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(
+            model=model,
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+            base_url="https://openrouter.ai/api/v1",
+            temperature=temperature,
+        )
+
+    if provider in {"local", "vllm", "lmstudio"}:
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(
+            model=model,
+            api_key=os.getenv("LOCAL_LLM_API_KEY", "not-needed"),
+            base_url=os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:8000/v1"),
+            temperature=temperature,
+        )
+
+    if provider in {"gemini", "google", "google_genai"}:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        return ChatGoogleGenerativeAI(model=model, temperature=temperature)
+
+    return init_chat_model(model, model_provider=provider, temperature=temperature)
+```
+
+### B. Extraction Universelle des Traces `<think>...</think>`
+
+```python
+THINK_TAG_PATTERN = re.compile(r"<think>(.*?)</think>", flags=re.DOTALL)
+
+
+def extract_reasoning_trace(raw_text: str) -> str:
+    """Extract content inside <think>...</think> tags if present, or return full text."""
+    match = THINK_TAG_PATTERN.search(raw_text)
+    if match:
+        think_content = match.group(1).strip()
+        remainder = THINK_TAG_PATTERN.sub("", raw_text).strip()
+        return f"{think_content}\n\nConclusion:\n{remainder}" if remainder else think_content
+    return raw_text.strip()
+```
+
+---
+
+## 3. Profils d'Exécution Clés en Main
+
+| Composant | Profil 1 : **100 % Local (Ollama)** | Profil 2 : **Hybride Économique** | Profil 3 : **Cloud Haute Précision** |
+| :--- | :--- | :--- | :--- |
+| **`query_model`** | `ollama/llama3.2:3b` | `ollama/qwen2.5:7b` | `openai/gpt-4o-mini` |
+| **`reasoning_model`** | `ollama/deepseek-r1:14b` | `openrouter/deepseek/deepseek-r1` | `google_genai/gemini-2.0-flash-thinking-exp` |
+| **`response_model`** | `ollama/qwen2.5:14b` | `anthropic/claude-3-5-sonnet-latest` | `openai/gpt-4o` |
+| **`embedding_model`** | `ollama/nomic-embed-text` | `BAAI/bge-large-en-v1.5` | `openai/text-embedding-3-small` |
+| **`reranker_provider`** | `local` (`BAAI/bge-reranker-base`) | `local` | `cohere` (`rerank-english-v3.0`) |
+| **Coût API / Confidentialité** | **0 € — 100 % Hors-Ligne** | Très faible | Standard Cloud |

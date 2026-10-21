@@ -46,12 +46,22 @@ flowchart TD
 - [`src/retrieval_graph/retrieval.py`](./src/retrieval_graph/retrieval.py) : Création dynamique du retriever (ChromaDB par défaut avec embeddings `BAAI/bge-large-en-v1.5` mis en cache et compression contextuelle `CohereRerank`, ainsi que le support d'Elasticsearch, Pinecone et MongoDB).
 - [`utils/obsidian_monitor.py`](./utils/obsidian_monitor.py) & [`utils/obsidian_indexer.py`](./utils/obsidian_indexer.py) : Surveillance et indexation automatiques des notes Markdown Obsidian locales dans ChromaDB.
 
-### Documentation du Projet (`docs/`)
-- [`docs/project_plan.md`](./docs/project_plan.md) : Plan de projet complet, architecture et suivi des phases.
-- [`docs/o1_architecture.md`](./docs/o1_architecture.md) : Schéma d'architecture détaillé des flux `RetrievalGraph` et `IndexGraph`.
-- [`docs/mem0ai-llm-summary.md`](./docs/mem0ai-llm-summary.md) : Guide d'utilisation et spécifications du client `Mem0Memory`.
-- [`docs/jxnl_co_writing_2024_05_22_systematically-improving-your-rag__docs.md`](./docs/jxnl_co_writing_2024_05_22_systematically-improving-your-rag__docs.md) : Synthèse en français des méthodes d'amélioration systématique d'un pipeline RAG.
-- [`docs/weave-docs_wandb_ai__docs.md`](./docs/weave-docs_wandb_ai__docs.md) : Documentation de Weave (Weights & Biases) utilisé pour l'évaluation RAG (`utils/eval_rag_pipeline.py`).
+### Site de Documentation Fumadocs (`docs/`)
+La documentation complète du projet est désormais propulsée par **[Fumadocs](https://www.fumadocs.dev)** (Next.js + MDX) dans le dossier [`docs/`](./docs/) :
+
+```powershell
+cd docs
+npm install
+npm run dev
+# Ouvrir http://localhost:3000/docs
+```
+
+Structure du contenu MDX ([`docs/content/docs/`](./docs/content/docs/)) :
+- **Introduction & Démarrage** : [`index.mdx`](./docs/content/docs/index.mdx), [`installation.mdx`](./docs/content/docs/installation.mdx), [`zero-runtime-qa.mdx`](./docs/content/docs/zero-runtime-qa.mdx), [`plan-projet.mdx`](./docs/content/docs/plan-projet.mdx).
+- **Architecture & Graphes** : [`vue-ensemble.mdx`](./docs/content/docs/architecture/vue-ensemble.mdx), [`retrieval-graph.mdx`](./docs/content/docs/architecture/retrieval-graph.mdx), [`index-graph-et-configuration.mdx`](./docs/content/docs/architecture/index-graph-et-configuration.mdx).
+- **Mémoire, RAG & Évaluation** : [`mem0-client.mdx`](./docs/content/docs/memoire-et-rag/mem0-client.mdx), [`obsidian-et-retrievers.mdx`](./docs/content/docs/memoire-et-rag/obsidian-et-retrievers.mdx), [`ameliorer-et-evaluer-rag.mdx`](./docs/content/docs/memoire-et-rag/ameliorer-et-evaluer-rag.mdx).
+- **Feuille de Route & RFCs (`P0` → `P3`)** : [`docs/content/docs/roadmap/`](./docs/content/docs/roadmap/index.mdx) (Audit de la codebase, découplage P0, support Ollama P1, nœud Reflector & Mem0 hybride P1, RAG hybride Obsidian P2, observabilité & tests P3).
+- **Dumps de Référence Externes (`resources/dumps/`)** : Les fichiers bruts scrappés (`langgraph.md`, `chroma.md`, `mem0ai-mem0.txt`, `contextual_retrieval.txt`) ont été isolés dans [`resources/dumps/`](./resources/dumps/) pour garder `docs/` parfaitement propre.
 
 ---
 

@@ -1,0 +1,121 @@
+---
+title: "03 [P1] — Boucle Réflexive & Mémoire Épisodique"
+description: Implémentation du nœud reflect et séparation entre l'historique conversationnel court-terme et les insights psychologiques long-terme.
+---
+
+- **Priorité** : **P1 (Haute — Fonctionnalité Cœur Métier de Mirror Agent)**
+- **Périmètre impacté** : `src/retrieval_graph/state.py`, `src/retrieval_graph/mem0_client.py`, `src/retrieval_graph/graph.py`, `src/retrieval_graph/prompts.py`
+
+---
+
+## 1. Contexte & Problématique Actuelle
+
+La promesse fondatrice de **Mirror Agent** est d'aider l'utilisateur à identifier ses schémas de pensée, ses valeurs profondes, ses contradictions et ses évolutions au fil du temps. Deux défauts structurels limitent aujourd'hui cette capacité :
+
+1. **Confusion entre l'historique du fil de discussion (Court-Terme) et la mémoire sémantique (Long-Terme)** :
+   - Dans `src/retrieval_graph/state.py` (L105-120), la fonction `reduce_messages` intercepte chaque message ajouté à `state.messages`, l'envoie à `mem0.add_message(new)` puis remplace toute la liste `state.messages` par `mem0.get_messages()`.
+   - Or, `mem0.get_messages()` interroge le moteur de recherche vectoriel `mem0.client.search(...)` qui n'est **pas** garanti en ordre chronologique strict, souffre d'une latence d'indexation côté serveur et mélange toutes les sessions d'un même `user_id` sans isolation par `thread_id`.
+2. **Absence du Nœud `reflect` dans `RetrievalGraph`** :
+   - Bien que prévu dans `prompts/reflection_step.md`, `src/retrieval_graph/graph.py` se termine directement sur `respond` sans analyser ni consolider les schémas psychologiques révélés par l'échange.
+
+---
+
+## 2. Architecture Cible : Double Mémoire & Nœud `reflect`
+
+- **Mémoire de Court Terme (`state.messages`)** : Gérée par `langgraph.graph.add_messages` et le Checkpointer natif de LangGraph (`MemorySaver` / `AsyncSqliteSaver`), garantissant l'ordre chronologique exact par `thread_id`.
+- **Mémoire de Long Terme Hybride (`Mem0Memory` Cloud `MemoryClient` ou Local Open-Source `Memory.from_config`)** :
+  - **Avec `MEM0_API_KEY`** : Utilise l'API SaaS `MemoryClient` de `mem0.ai`.
+  - **Sans `MEM0_API_KEY` (100 % Local dans la boîte)** : Utilise `Memory.from_config(...)` de `mem0ai` branché sur **ChromaDB** local (`data/chroma_mem0`), les embeddings `BAAI/bge-large-en-v1.5` et **Ollama** (ou OpenAI).
+  - **En entrée (`load_user_profile`)** : Récupère les `user_insights` pertinents avant de répondre.
+  - **En sortie (`reflect`)** : Analyse le dernier échange et extrait des objets `PsychologicalInsight` typés.
+
+---
+
+## 3. Spécifications Techniques & Implémentation
+
+### A. Modèle de Données Structuré pour l'Introspection (`graph.py`)
+
+```python
+from typing import Literal, Optional
+from pydantic import BaseModel, Field
+
+
+class PsychologicalInsight(BaseModel):
+    """Structured insight extracted from the user's reflection."""
+
+    category: Literal[
+        "core_value",          # Valeur fondamentale exprimée par l'utilisateur
+        "recurring_pattern",   # Habitude ou schéma de pensée récurrent
+        "cognitive_tension",   # Contradiction, dilemme ou croyance limitante
+        "personal_goal",       # Objectif, aspiration ou projet personnel
+        "emotional_trigger",   # Source d'anxiété, d'enthousiasme ou de blocage
+    ]
+    summary: str = Field(description="Concise 1-2 sentence formulation of the insight.")
+    socratic_follow_up: Optional[str] = Field(
+        default=None,
+        description="Open question to explore in a future session.",
+    )
+
+
+class ReflectionOutput(BaseModel):
+    """Result of the post-response reflection analysis."""
+
+    should_store: bool = Field(
+        description="True only if the exchange reveals a meaningful personal insight."
+    )
+    insights: list[PsychologicalInsight] = Field(default_factory=list)
+```
+
+### B. Implémentation du Nœud `reflect` en Aval de `respond`
+
+```python
+async def reflect(
+    state: State, *, config: RunnableConfig
+) -> dict[str, Optional[str]]:
+    """Analyze the latest interaction and persist psychological insights in long-term memory."""
+    if len(state.messages) < 2:
+        return {"reflection_summary": None}
+
+    configuration = Configuration.from_runnable_config(config)
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", configuration.reflection_system_prompt),
+        ("human", "User message:\n{user_msg}\n\nAgent response:\n{ai_msg}"),
+    ])
+
+    model = load_chat_model(configuration.query_model).with_structured_output(ReflectionOutput)
+    result = await (prompt | model).ainvoke(
+        {
+            "user_msg": get_message_text(state.messages[-2]),
+            "ai_msg": get_message_text(state.messages[-1]),
+        },
+        config,
+    )
+
+    if not result.should_store or not result.insights:
+        return {"reflection_summary": None}
+
+    mem0_client = get_mem0_client()
+    summaries: list[str] = []
+    for item in result.insights:
+        summary_text = f"[{item.category}] {item.summary}"
+        summaries.append(summary_text)
+        if mem0_client is not None:
+            mem0_client._add_memory_item(
+                summary_text,
+                metadata={
+                    "type": "insight",
+                    "category": item.category,
+                    "socratic_follow_up": item.socratic_follow_up or "",
+                },
+            )
+
+    return {"reflection_summary": "\n".join(summaries)}
+```
+
+---
+
+## 4. Plan de Migration & Critères de Validation
+
+1. Remplacer `reduce_messages` par `add_messages` dans `InputState` (`src/retrieval_graph/state.py`) et ajouter les champs `user_insights: list[str]` et `reflection_summary: Optional[str]` dans `State`.
+2. Rendre `Mem0Memory` hybride (`MemoryClient` si `MEM0_API_KEY` est présent, sinon `Memory.from_config` local sur `data/chroma_mem0`).
+3. Ajouter `REFLECTION_SYSTEM_PROMPT` dans `src/retrieval_graph/prompts.py` et brancher les nœuds `load_user_profile` et `reflect` dans `src/retrieval_graph/graph.py`.

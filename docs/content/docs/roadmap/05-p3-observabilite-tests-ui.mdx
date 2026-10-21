@@ -1,0 +1,69 @@
+---
+title: "05 [P3] — Observabilité, Tests Zero-Runtime & UI"
+description: Découplage du logging GCP, suite de tests unitaires 100 % mockée hors-ligne, évaluation LLM-as-a-Judge et interface utilisateur dédiée.
+---
+
+- **Priorité** : **P3 (Évolutive — Industrialisation, Qualité Continue & Expérience Utilisateur)**
+- **Périmètre impacté** : `utils/gcp_logging.py`, `utils/eval_rag_pipeline.py`, `tests/unit_tests/`, `ui/`
+
+---
+
+## 1. Contexte & Problématique Actuelle
+
+1. **Couplage rigide à Google Cloud Logging (`utils/gcp_logging.py` & `utils/obsidian_monitor.py`)** :
+   - `MirrorAgentLogger` exécute `self.client = google.cloud.logging.Client()` sans vérifier si un projet GCP est configuré, provoquant une `DefaultCredentialsError` sur un poste local non authentifié à GCP.
+2. **Couverture de tests unitaires quasi inexistante (`tests/unit_tests/`)** :
+   - `tests/unit_tests/test_configuration.py` contient une seule ligne sans assertion (`Configuration.from_runnable_config({"user_id": "foo"})`).
+3. **Métrique d'évaluation RAG biaisée (`utils/eval_rag_pipeline.py`)** :
+   - La distance de Levenshtein globale (`Levenshtein.distance(expected_text, doc_text) / max(...)`) entre une réponse courte attendue et un segment de 3000 caractères plafonne mathématiquement le score autour de `0.03`, rendant le seuil `score > 0.8` impossible à atteindre.
+
+---
+
+## 2. Spécifications Techniques
+
+### A. Observabilité Hybride & Découplée de GCP (`utils/gcp_logging.py`)
+
+```python
+import json
+import logging
+import os
+from typing import Any, Dict, Optional
+
+logger = logging.getLogger("mirror-agent")
+
+
+class MirrorAgentLogger:
+    """Structured logger with optional GCP Cloud Logging backend and local fallback."""
+
+    def __init__(self, log_name: str = "mirror-agent") -> None:
+        """Initialize the logger with automatic fallback to standard Python logging."""
+        self.log_name = log_name
+        self.start_time: Optional[float] = None
+        self._gcp_logger = None
+
+        if os.getenv("ENABLE_GCP_LOGGING", "").lower() in {"1", "true", "yes"}:
+            try:
+                from google.cloud import logging as gcp_logging
+
+                client = gcp_logging.Client()
+                self._gcp_logger = client.logger(log_name)
+            except Exception:
+                logger.warning("GCP credentials unavailable; falling back to local structured logging.")
+
+    def _emit(self, payload: Dict[str, Any], severity: str = "INFO") -> None:
+        """Emit structured log entry to GCP if enabled, otherwise to standard logger."""
+        if self._gcp_logger is not None:
+            self._gcp_logger.log_struct(payload, severity=severity)
+        else:
+            level = getattr(logging, severity.upper(), logging.INFO)
+            logger.log(level, json.dumps(payload, ensure_ascii=False))
+```
+
+### B. Suite de Tests Unitaires « Zero-Runtime QA » (`tests/unit_tests/`)
+- `test_mem0_client_unit.py` : Vérifie l'instanciation `MESSAGE_TYPES`, la tolérance à `metadata=None`, l'isolation des erreurs et la présence des filtres à la racine du payload avec `MemoryClient` mocké.
+- `test_graph_routing_unit.py` : Teste toutes les transitions conditionnelles de `RetrievalGraph` et l'extraction des balises `<think>...</think>`.
+- `test_configuration.py` : Assertions complètes sur `Configuration.from_runnable_config`.
+
+### C. Correction de l'Évaluation RAG (`utils/eval_rag_pipeline.py`) & Interface UI (`ui/app.py`)
+- Remplacement de la distance de Levenshtein par la couverture lexicale normalisée (*Token Recall*), la similarité cosinus des embeddings et un évaluateur *LLM-as-a-Judge* (*Context Recall*, *Faithfulness*, *Socratic Quality*).
+- Ajout d'une interface légère affichant le fil socratique, l'accordéon de raisonnement (`reasoning_trace`), les cartes des notes Obsidian mobilisées et les *insights* psychologiques consolidés.

@@ -120,14 +120,16 @@ mirror-agent/
 │   ├── test_mem0_integration.py     # Tests d'intégration de Mem0Memory (messages, documents, souvenirs)
 │   ├── unit_tests/                  # Tests unitaires (ex. test_configuration.py)
 │   └── integration_tests/           # Tests d'intégration du graphe (test_graph.py)
-└── docs/                            # Documentation du projet (FR) et références externes
-    ├── project_plan.md              # Plan de projet et suivi des phases (FR)
-    ├── o1_architecture.md           # Schéma d'architecture détaillé des graphes (FR)
-    ├── mem0ai-llm-summary.md        # Documentation du client Mem0Memory (FR)
-    ├── weave-docs_wandb_ai__docs.md # Résumé Weave et son usage dans eval_rag_pipeline.py (FR)
-    ├── jxnl_co_writing_2024_05_22_systematically-improving-your-rag__docs.md # Guide d'amélioration RAG (FR)
+├── docs/                            # Application de documentation Fumadocs (Next.js + MDX en français)
+│   ├── package.json                 # Scripts npm/pnpm (dev, build, start) et dépendances Fumadocs
+│   ├── source.config.ts             # Configuration Fumadocs MDX (content/docs)
+│   ├── app/                         # Routes Next.js App Router (accueil, /docs/[[...slug]], /api/search)
+│   └── content/docs/                # Source unique de la doc MDX (architecture, memoire-et-rag, roadmap P0->P3)
+└── resources/dumps/                 # Dumps bruts de documentation externe isolés hors de docs/
     ├── chroma.md                    # Dump de référence externe ChromaDB (NE PAS TRADUIRE/ÉCRASER)
-    └── langgraph.md                 # Dump de référence externe LangGraph de 8,2 Mo (NE PAS OUVRIR EN ENTIER/ÉCRASER)
+    ├── contextual_retrieval.txt     # Notes brutes Contextual Retrieval
+    ├── langgraph.md                 # Dump de référence externe LangGraph de 8,2 Mo (NE PAS OUVRIR EN ENTIER/ÉCRASER)
+    └── mem0ai-mem0.txt              # Dump brut du dépôt Mem0 (2,1 Mo)
 ```
 
 ---

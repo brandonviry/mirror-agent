@@ -1,0 +1,49 @@
+---
+title: IndexGraph, État & Configuration
+description: Fonctionnement du graphe d'indexation (index_graph.py), des structures d'état (state.py) et de la configuration (configuration.py).
+---
+
+## 1. Le Graphe d'Indexation (`IndexGraph`)
+
+Défini dans `src/retrieval_graph/index_graph.py`, **`IndexGraph`** expose un point d'entrée simple permettant d'envoyer une liste de documents à indexer dans la base vectorielle configurée.
+
+### Flux d'Exécution (`index_docs`)
+1. Prend en entrée un état `IndexState` contenant `docs: Annotated[Sequence[Document], reduce_docs]`.
+2. Appelle `ensure_docs_have_user_id(state.docs, config)` pour garantir que chaque `Document` possède bien la clé `"user_id"` dans son dictionnaire `metadata`.
+3. Ouvre `with retrieval.make_retriever(config) as retriever:` et appelle `await retriever.aadd_documents(stamped_docs)`.
+4. Retourne `{"docs": "delete"}` afin de déclencher la purge de la liste `docs` dans l'état via le réducteur `reduce_docs`.
+
+---
+
+## 2. Gestion de l'État (`src/retrieval_graph/state.py`)
+
+Le fichier `state.py` définit trois dataclasses et leurs fonctions de réduction (*reducers*) associées à **Mem0** :
+
+| Structure / Fonction | Rôle | Détails Techniques |
+| :--- | :--- | :--- |
+| `IndexState` | État d'entrée de `IndexGraph` | Contient `docs: Annotated[Sequence[Document], reduce_docs]` |
+| `InputState` | État d'entrée de `RetrievalGraph` | Contient `messages: Annotated[Sequence[AnyMessage], reduce_messages]` |
+| `State` | État complet de `RetrievalGraph` | Contient `queries`, `retrieved_docs`, `next` (`"retrieve"` par défaut) et `reasoning_trace` |
+| `reduce_docs` | Réducteur pour `IndexState.docs` | Accepte `Document`, `dict`, `str` ou `"delete"` (pour vider l'état) et sauvegarde chaque nouveau document via `mem0.add_document(doc)` |
+| `reduce_messages` | Réducteur pour `InputState.messages` | Enregistre chaque nouveau message via `mem0.add_message(new)` et retourne `mem0.get_messages()` |
+
+---
+
+## 3. Classes de Configuration (`src/retrieval_graph/configuration.py`)
+
+La configuration repose sur deux dataclasses instanciables dynamiquement à partir d'un `RunnableConfig` LangChain via la méthode de classe `from_runnable_config` :
+
+### `IndexConfiguration`
+Paramètres partagés entre l'indexation et la recherche :
+- `user_id` (`str`, défaut `"1"`) : Identifiant unique de l'utilisateur.
+- `embedding_model` (`Optional[str]`, défaut `None`) : Modèle d'embedding au format `provider/model-name` (optionnel pour Chroma qui utilise `BAAI/bge-large-en-v1.5` par défaut).
+- `retriever_provider` (`Literal["chroma"]`, défaut `"chroma"`) : Fournisseur de base vectorielle.
+- `search_kwargs` (`dict[str, Any]`, défaut `{}`) : Arguments additionnels transmis au retriever (ex. `{"k": 20}`).
+
+### `Configuration(IndexConfiguration)`
+Hérite de `IndexConfiguration` et ajoute les paramètres LLM du graphe conversationnel :
+- `response_system_prompt` (`str`) : Prompt système socratique (`prompts.RESPONSE_SYSTEM_PROMPT`).
+- `response_model` (`str`, défaut `"openai/gpt-4o"`) : Modèle générant la réponse finale.
+- `query_system_prompt` (`str`) : Prompt système de génération de requêtes (`prompts.QUERY_SYSTEM_PROMPT`).
+- `query_model` (`str`, défaut `"openai/gpt-4o"`) : Modèle utilisé pour les décisions de routage et la formulation des requêtes.
+- `reasoning_model` (`str`, défaut `"gemini-2.0-flash-thinking-exp-01-21"`) : Modèle utilisé par `apply_reasoning`.

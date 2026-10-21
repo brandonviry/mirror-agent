@@ -1,0 +1,39 @@
+---
+title: Graphe Conversationnel (RetrievalGraph)
+description: Détail des nœuds, des décisions conditionnelles et des prompts de src/retrieval_graph/graph.py.
+---
+
+Le graphe principal **`RetrievalGraph`** est défini dans `src/retrieval_graph/graph.py` et compilé dans la variable `graph`. Il orchestre six nœuds connectés par des arêtes conditionnelles.
+
+---
+
+## Les 6 Nœuds du `RetrievalGraph`
+
+### 1. `should_retrieve(state, config)`
+Analyse le dernier message de l'utilisateur avec `query_model` (`openai/gpt-4o`) et le schéma de sortie structurée `RetrievalDecision(next: Literal["retrieve", "respond"])` :
+- Retourne **`"retrieve"`** si la question porte sur l'histoire personnelle, des schémas comportementaux, ou fait référence à des notes et interactions passées.
+- Retourne **`"respond"`** si la question est purement générale, philosophique ou limitée à l'échange immédiat.
+
+### 2. `generate_query(state, config)`
+Formule la requête envoyée au moteur de recherche vectoriel :
+- S'il s'agit du tout premier message de la conversation (`len(state.messages) == 1`), utilise directement le texte de l'utilisateur.
+- Pour les messages suivants, utilise `QUERY_SYSTEM_PROMPT` et `query_model` avec `SearchQuery` pour générer une requête contextualisée qui évite de répéter les `state.queries` précédentes.
+
+### 3. `retrieve(state, config)`
+Ouvre le gestionnaire de contexte `with retrieval.make_retriever(config) as retriever:` et exécute `await retriever.ainvoke(state.queries[-1], config)`.
+- Les documents retournés (`list[Document]`) sont stockés dans `state.retrieved_docs`.
+
+### 4. `should_reason(state, config)`
+Évalue si la requête nécessite une étape de réflexion analytique approfondie via le schéma structuré `ReasoningDecision(next: Literal["reason", "respond"], explanation: str)` :
+- Retourne **`"reason"`** si la question implique de la logique, de l'analyse de données, des mathématiques, du code ou une résolution de problème multi-étapes.
+- Retourne **`"respond"`** pour une conversation socratique directe.
+
+### 5. `apply_reasoning(state, config)`
+Exécute une décomposition analytique étape par étape en tenant compte de la question et des documents récupérés (`format_docs(state.retrieved_docs)`) :
+- Utilise par défaut `gemini-2.0-flash-thinking-exp-01-21` via `google.generativeai` (exécuté de manière non-bloquante via `asyncio.to_thread`).
+- Stocke le résultat dans `state.reasoning_trace`.
+
+### 6. `respond(state, config)`
+Génère la réponse finale adressée à l'utilisateur :
+- Combine les documents formatés en XML (`<documents>...</documents>`) et la trace de raisonnement éventuelle (`Reasoning Trace:\n...`).
+- Invoque `response_model` (`openai/gpt-4o`) avec `RESPONSE_SYSTEM_PROMPT` qui définit la posture socratique, réflexive et bienveillante du Mirror Agent.

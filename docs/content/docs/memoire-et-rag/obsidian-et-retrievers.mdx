@@ -1,0 +1,37 @@
+---
+title: Indexation Obsidian & Retrievers
+description: Fonctionnement des retrievers vectoriels (ChromaDB, CohereRerank, Pinecone, Elastic, MongoDB) et de la synchronisation Obsidian.
+---
+
+## 1. Architecture des Retrievers (`src/retrieval_graph/retrieval.py`)
+
+La fonction `make_retriever(config)` agit comme un gestionnaire de contexte (`@contextmanager`) qui instancie dynamiquement le retriever adapté selon `configuration.retriever_provider` :
+
+| Fournisseur (`retriever_provider`) | Modèle d'Embedding par Défaut | Variables d'Environnement Requises |
+| :--- | :--- | :--- |
+| **`"chroma"` (Par défaut)** | `BAAI/bge-large-en-v1.5` (local) | `CHROMA_PERSIST_DIR` (défaut `data/chroma`), `CHROMA_COLLECTION_NAME` (défaut `obsidian`) |
+| **`"elastic"`** | `openai/text-embedding-ada-002` | `ELASTICSEARCH_URL`, `ELASTICSEARCH_API_KEY` |
+| **`"elastic-local"`** | `openai/text-embedding-ada-002` | `ELASTICSEARCH_URL`, `ELASTICSEARCH_USER`, `ELASTICSEARCH_PASSWORD` |
+| **`"pinecone"`** | `openai/text-embedding-ada-002` | `PINECONE_API_KEY`, `PINECONE_INDEX_NAME` |
+| **`"mongodb"`** | `openai/text-embedding-ada-002` | `MONGODB_URI` |
+
+### Compression Contextuelle & Re-ranking (`CohereRerank`)
+Quel que soit le fournisseur choisi, le retriever de base (qui récupère par défaut `k=20` candidats sous ChromaDB) est enveloppé par `create_compressed_retriever(base_retriever)` :
+- Si `CohereRerank(model="rerank-english-v3.0")` est initialisé (`COHERE_API_KEY` défini), il applique un `ContextualCompressionRetriever` pour ne conserver et réordonner que les passages les plus pertinents.
+- En cas d'absence de clé Cohere ou d'erreur d'initialisation, le système bascule automatiquement (*fallback*) sur le retriever vectoriel de base.
+
+---
+
+## 2. Indexation et Surveillance du Coffre Obsidian (`utils/`)
+
+Deux scripts utilitaires permettent de synchroniser un coffre **Obsidian** local avec la base vectorielle ChromaDB (`data/chroma`) :
+
+### `utils/obsidian_indexer.py`
+- Charge tous les fichiers Markdown du dossier défini par `OBSIDIAN_PATH` via `ObsidianLoader`.
+- Maintient un registre incrémental dans `data/indexed_files.json` (horodatage de dernière modification et identifiants des chunks Chroma) afin de ne ré-indexer que les notes nouvelles ou modifiées et de supprimer les anciens segments obsolètes.
+- Génère un résumé de 2 à 3 lignes par document (`generate_doc_summary`) et découpe le texte avec `RecursiveCharacterTextSplitter`.
+- Calcule les embeddings par lot (*batch*) avec `BAAI/bge-large-en-v1.5` en utilisant l'accélération matérielle disponible (`cuda`, `mps` ou `cpu`).
+
+### `utils/obsidian_monitor.py`
+- Surveille l'activité de l'application Obsidian et déclenche automatiquement `obsidian_indexer.py` lors de l'ouverture ou de la mise à jour du coffre.
+- Peut être démarré et arrêté via les scripts `scripts/start_monitor.sh` et `scripts/stop_monitor.sh` (ou les cibles `make start` / `make stop`).

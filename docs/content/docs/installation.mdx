@@ -1,0 +1,91 @@
+---
+title: Installation & Démarrage Rapide
+description: Guide pas à pas pour installer les dépendances, configurer les variables d'environnement et lancer Mirror Agent avec LangGraph CLI.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+<Callout title="Absence de fichier main.py" type="warn">
+  Les anciennes versions de la documentation mentionnaient `python main.py`, qui n'existe pas dans ce dépôt. Ce projet étant une application **LangGraph** déclarée dans `langgraph.json`, il se lance via le **CLI LangGraph (`langgraph dev`)** ou se vérifie via `pytest` / `unittest`.
+</Callout>
+
+---
+
+## 1. Créer un Environnement Virtuel & Installer les Dépendances
+
+Clonez le dépôt et créez un environnement virtuel Python (`>= 3.9`, recommandé `3.11`) :
+
+```powershell
+# Cloner le dépôt
+git clone https://github.com/brandonviry/mirror-agent.git
+cd mirror-agent
+
+# Créer l'environnement virtuel
+python -m venv .venv
+
+# Activer l'environnement virtuel (Windows PowerShell) :
+.\.venv\Scripts\Activate.ps1
+
+# Activer l'environnement virtuel (macOS / Linux) :
+source .venv/bin/activate
+
+# Installer le package en mode éditable et les dépendances de test/CLI
+pip install -e .
+pip install mem0ai "langgraph-cli[inmem]" pytest
+```
+
+---
+
+## 2. Configurer les Variables d'Environnement (`.env`)
+
+Copiez le fichier modèle `.env.example` vers `.env` à la racine du projet :
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Renseignez ensuite vos clés API selon les fonctionnalités utilisées :
+
+| Variable | Obligatoire | Description |
+| :--- | :---: | :--- |
+| `OPENAI_API_KEY` | **Oui** | Utilisée par défaut pour `query_model` et `response_model` (`openai/gpt-4o`) |
+| `GOOGLE_API_KEY` | Si raisonnement | Utilisée par le nœud `apply_reasoning` (`gemini-2.0-flash-thinking-exp-01-21`) |
+| `MEM0_API_KEY` | **Oui** | Votre clé API [mem0.ai](https://mem0.ai) pour la mémoire persistante |
+| `MEM0_ORG_ID` | **Oui** | Votre identifiant d'organisation Mem0 |
+| `MEM0_PROJECT_ID` | **Oui** | Votre identifiant de projet Mem0 |
+| `MEM0_USER_ID` | **Oui (dès l'import)** | Identifiant unique de l'utilisateur (ex. `test-user`). Vérifié immédiatement lors de l'initialisation de `Mem0Memory` dans `state.py` |
+| `MEM0_APP_ID` | Optionnel | Identifiant de l'application (par défaut : `mirror-agent`) |
+| `MEM0_RUN_ID` | Optionnel | Identifiant de session d'exécution (par défaut : `test-run`) |
+| `COHERE_API_KEY` | Optionnel | Utilisée par `CohereRerank` (`rerank-english-v3.0`) pour la compression contextuelle des résultats RAG |
+| `OBSIDIAN_PATH` | Optionnel | Chemin absolu vers votre coffre Obsidian local pour `utils/obsidian_indexer.py` |
+
+---
+
+## 3. Lancer ou Vérifier le Projet
+
+### Option A — Lancer le Serveur Local & LangGraph Studio
+
+```powershell
+langgraph dev
+```
+
+Une fois le serveur démarré en mode mémoire (*in-memory*), les points d'accès suivants sont disponibles :
+- **API Locale** : `http://localhost:2024`
+- **Documentation OpenAPI / Swagger** : `http://localhost:2024/docs`
+- **Interface LangGraph Studio** : `https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024`
+
+### Option B — Vérification Statique & Exécution des Tests
+
+```powershell
+# 1. Vérification syntaxique et compilation (aucune clé API requise)
+python -m py_compile src/retrieval_graph/mem0_client.py
+
+# 2. Linting complet avec Ruff (vérifie le style, les docstrings Google et l'absence de print)
+python -m ruff check src/
+
+# 3. Tests unitaires
+python -m pytest tests/unit_tests -v
+
+# 4. Tests d'intégration Mem0 (nécessite des clés MEM0_* valides dans .env)
+python -m unittest tests/test_mem0_integration.py
+```

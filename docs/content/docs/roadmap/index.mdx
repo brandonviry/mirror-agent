@@ -1,0 +1,58 @@
+---
+title: Matrice de Priorisation (P0 → P3)
+description: Index exécutif des spécifications d'évolution (RFCs) et de l'audit technique de Mirror Agent.
+---
+
+import { Card, Cards } from 'fumadocs-ui/components/card';
+
+Cette section regroupe le **diagnostic architectural** de la codebase actuelle et les **spécifications techniques d'évolution (RFCs)** classées par ordre d'importance (`P0` Critique à `P3` Évolutive).
+
+---
+
+## Matrice de Priorisation des Chantiers
+
+| Priorité | Spécification | Nature | Problème Résolu / Valeur Ajoutée | Effort | Impact |
+| :---: | :--- | :---: | :--- | :---: | :---: |
+| **Audit** | [00 — Audit de la Codebase](/docs/roadmap/00-audit-codebase) | Diagnostic | Cartographie complète de l'existant, analyse ligne par ligne des dettes techniques et des bugs latents. | — | Référence |
+| **P0 — Critique** | [01 — Découplage État & Types](/docs/roadmap/01-p0-decouplage-etat) | Refonte Core | Supprime les crashs à l'import (`state.py`, `retrieval.py`), corrige l'héritage `State(InputState)`, élimine `pickle` sur les embeddings et migre vers Pydantic v2. | Moyen | **Critique** |
+| **P1 — Haute** | [02 — Fournisseurs Locaux & Ollama](/docs/roadmap/02-p1-fournisseurs-locaux-ollama) | Refonte Modèles | Rend l'agent **100 % agnostique et compatible local** : support natif d'**Ollama** (`llama3.2`, `qwen2.5`, `deepseek-r1`), **vLLM**, **OpenRouter**, embeddings locaux et reranker local (`CrossEncoder`). | Moyen | **Majeur** |
+| **P1 — Haute** | [03 — Boucle Réflexive & Mémoire](/docs/roadmap/03-p1-boucle-reflexive) | Fonctionnalité Cœur | Implémente le nœud manquant `reflect` et sépare la mémoire conversationnelle court-terme (Checkpointer LangGraph) de la mémoire psychologique long-terme (Mem0 / SQLite local). | Élevé | **Majeur** |
+| **P2 — Moyenne** | [04 — Pipeline RAG Hybride Obsidian](/docs/roadmap/04-p2-rag-hybride-obsidian) | Refonte RAG | Unifie `obsidian_indexer.py` et `IndexGraph`, ajoute la recherche hybride (**BM25 + Vecteurs**), extrait le graphe `[[WikiLinks]]` / `#tags` / YAML et remplace le polling `psutil` par `watchdog`. | Élevé | **Élevé** |
+| **P3 — Évolutive** | [05 — Observabilité, Tests & UI](/docs/roadmap/05-p3-observabilite-tests-ui) | Qualité & UI | Découple le logging de GCP, ajoute une suite de tests unitaires mockés à 100 % (*Zero-Runtime QA*), remplace Levenshtein par un évaluateur *LLM-as-a-Judge* et propose une interface web/CLI dédiée. | Moyen | **Moyen** |
+
+---
+
+## Parcourir les Spécifications
+
+<Cards>
+  <Card
+    title="00 — Audit Technique de la Codebase"
+    description="Analyse ligne par ligne des effets de bord à l'import, incohérences de types et modèles codés en dur."
+    href="/docs/roadmap/00-audit-codebase"
+  />
+  <Card
+    title="01 [P0] — Découplage État & Dépendances"
+    description="Initialisation paresseuse de Mem0/Cohere, correction de State(InputState) et suppression de pickle."
+    href="/docs/roadmap/01-p0-decouplage-etat"
+  />
+  <Card
+    title="02 [P1] — Fournisseurs Locaux & Ollama"
+    description="Exécution 100 % locale avec Ollama (Chat, Thinking <think>, Embeddings) et Reranker CrossEncoder."
+    href="/docs/roadmap/02-p1-fournisseurs-locaux-ollama"
+  />
+  <Card
+    title="03 [P1] — Boucle Réflexive & Mémoire"
+    description="Ajout du nœud reflect et séparation entre historique de session et insights psychologiques à long terme."
+    href="/docs/roadmap/03-p1-boucle-reflexive"
+  />
+  <Card
+    title="04 [P2] — Pipeline RAG Hybride Obsidian"
+    description="Unification de l'ingestion Markdown, recherche hybride BM25 + Vecteurs et expansion des [[WikiLinks]]."
+    href="/docs/roadmap/04-p2-rag-hybride-obsidian"
+  />
+  <Card
+    title="05 [P3] — Observabilité, Tests & Interface"
+    description="Logging découplé de GCP, tests unitaires Zero-Runtime QA et interface utilisateur réflexive."
+    href="/docs/roadmap/05-p3-observabilite-tests-ui"
+  />
+</Cards>

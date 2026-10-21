@@ -1,0 +1,61 @@
+---
+title: Présentation de Mirror Agent
+description: Compagnon IA socratique pour l'introspection guidée, propulsé par LangGraph, Mem0, ChromaDB et Gemini 2.0 Flash Thinking.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Card, Cards } from 'fumadocs-ui/components/card';
+
+**Mirror Agent** est un assistant d'introspection socratique conçu pour aider l'utilisateur à mieux se comprendre grâce à un dialogue réflexif, une mémoire persistante à long terme et l'exploitation de ses notes personnelles (coffre **Obsidian**).
+
+Construit autour de **LangGraph**, **LangChain**, **ChromaDB** et **Mem0**, il orchestre dynamiquement la recherche documentaire, le raisonnement analytique multi-étapes et le questionnement socratique.
+
+<Callout title="Expérimentation Zero-Runtime QA" type="info">
+  Ce dépôt fait également l'objet d'une expérimentation d'ingénierie logicielle assistée par l'IA : **améliorer, corriger et vérifier une base de code existante uniquement par analyse théorique des contrats de types et vérification statique**, sans exécution complète du runtime. Consultez la page dédiée [Zero-Runtime QA & Refactoring Mem0](/docs/zero-runtime-qa).
+</Callout>
+
+---
+
+## Les 4 Piliers de Mirror Agent
+
+1. **Questionnement Socratique & Bienveillant** : Plutôt que de livrer des réponses génériques, l'agent pose des questions ouvertes qui encouragent l'utilisateur à explorer ses propres hypothèses, émotions et schémas de pensée (`RESPONSE_SYSTEM_PROMPT`).
+2. **Mémoire Persistante à Long Terme (`Mem0`)** : Conserve l'historique des échanges, les préférences et le contexte personnel de l'utilisateur d'une session à l'autre via `Mem0Memory` (`src/retrieval_graph/mem0_client.py`).
+3. **Recherche Documentaire Personnelle (`ChromaDB` + `CohereRerank`)** : Indexe les notes Markdown locales d'un coffre **Obsidian** avec le modèle d'embeddings `BAAI/bge-large-en-v1.5` et applique une compression contextuelle par re-ranking (`rerank-english-v3.0`).
+4. **Raisonnement Analytique Dédié (`Gemini 2.0 Flash Thinking`)** : Détecte automatiquement les questions nécessitant une décomposition logique, scientifique ou complexe (`should_reason` $\rightarrow$ `apply_reasoning`) avant de formuler la réponse finale.
+
+---
+
+## Explorer la Documentation
+
+<Cards>
+  <Card
+    title="Installation & Démarrage Rapide"
+    description="Configurez votre environnement virtuel .venv, vos variables .env et lancez le serveur LangGraph Studio."
+    href="/docs/installation"
+  />
+  <Card
+    title="Zero-Runtime QA & Refactoring"
+    description="Découvrez comment les bugs critiques de mem0_client.py ont été identifiés et corrigés sans lancer l'application."
+    href="/docs/zero-runtime-qa"
+  />
+  <Card
+    title="Architecture & Graphes LangGraph"
+    description="Explorez le fonctionnement interne de RetrievalGraph, IndexGraph et la gestion de l'état."
+    href="/docs/architecture/vue-ensemble"
+  />
+  <Card
+    title="Mémoire Mem0 & Pipeline RAG"
+    description="Guide technique du client Mem0Memory, de l'indexeur Obsidian et de l'évaluation avec Weave."
+    href="/docs/memoire-et-rag/mem0-client"
+  />
+  <Card
+    title="Feuille de Route & RFCs (P0 → P3)"
+    description="Audit complet de la codebase et spécifications d'évolution (support Ollama 100 % local, nœud Reflector, RAG hybride)."
+    href="/docs/roadmap"
+  />
+  <Card
+    title="Plan de Projet"
+    description="Consultez les 10 phases de développement du projet Mirror Agent et leur état d'avancement."
+    href="/docs/plan-projet"
+  />
+</Cards>

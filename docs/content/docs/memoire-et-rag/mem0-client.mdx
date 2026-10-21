@@ -1,0 +1,110 @@
+---
+title: Client Mémoire Mem0 (Cloud vs Local)
+description: Analyse approfondie de mem0ai (MemoryClient SaaS vs Memory Open-Source local), fonctionnement actuel de Mem0Memory et architecture cible hybride.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+Le module `src/retrieval_graph/mem0_client.py` gère la mémoire à long terme de **Mirror Agent** via la bibliothèque Python **`mem0ai`**.
+
+Cette page détaille :
+1. **Ce qu'est réellement Mem0** et la différence fondamentale entre ses **deux modes** (`MemoryClient` Cloud vs `Memory` Local Open-Source).
+2. **Le fonctionnement actuel** de la classe `Mem0Memory` dans le dépôt.
+3. **L'amélioration architecturale prévue (P0/P1)** pour permettre d'utiliser Mem0 **100 % en local sans clé `MEM0_API_KEY`**.
+
+---
+
+## 1. Analyse Technique : Les 2 Modes de `mem0ai`
+
+Contrairement à une base de données classique qui stocke du texte brut, **Mem0** agit comme une couche d'intelligence mémoire : lorsqu'un utilisateur discute avec l'agent, Mem0 utilise un LLM et une base vectorielle pour extraire des faits atomiques, fusionner les informations redondantes et mettre à jour les souvenirs contradictoires au fil du temps.
+
+Le paquet Python `mem0ai` embarque **deux moteurs distincts** selon la classe importée :
+
+| Critère | Mode 1 : **Mem0 Cloud (`MemoryClient`)**<br>*(Implémenté actuellement dans `mem0_client.py`)* | Mode 2 : **Mem0 Open-Source (`Memory`)**<br>*(100 % Local dans la boîte — Cible P0/P1)* |
+| :--- | :--- | :--- |
+| **Classe Python** | `from mem0.client.main import MemoryClient` | `from mem0 import Memory` |
+| **Hébergement** | **SaaS Externe** (`api.mem0.ai`) — rien à héberger | **Auto-hébergé dans le process Python** (aucun serveur externe requis) |
+| **Prérequis / Clés** | Compte sur [app.mem0.ai](https://app.mem0.ai) + 3 variables :<br>• `MEM0_API_KEY`<br>• `MEM0_ORG_ID`<br>• `MEM0_PROJECT_ID` | **Aucune clé Mem0 requise !**<br>S'appuie directement sur **ChromaDB** local + **Ollama** (ou OpenAI) |
+| **Stockage des données** | Serveurs distants de Mem0 | Dossier local (ex. `data/chroma_mem0`) |
+| **Coût & Quotas** | Gratuit jusqu'à un quota limité, puis payant | **100 % Gratuit et sans limite** |
+| **Confidentialité** | Les messages et documents transitent par l'API `mem0.ai` | **100 % Privé / Hors-Ligne** |
+
+---
+
+## 2. Fonctionnement Actuel (`src/retrieval_graph/mem0_client.py`)
+
+Actuellement, `Mem0Memory` utilise exclusivement le **Mode 1 (`MemoryClient` Cloud)**.
+
+### Variables d'Environnement Requises (Mode Cloud Actuel)
+
+- `MEM0_API_KEY` : Votre clé API mem0.ai
+- `MEM0_ORG_ID` : L'identifiant de votre organisation Mem0
+- `MEM0_PROJECT_ID` : L'identifiant de votre projet Mem0
+- `MEM0_USER_ID` : Identifiant unique de l'utilisateur (ex. `'test-user'`). **Obligatoire dès l'initialisation** (`ValueError` levée s'il est absent ; les guillemets superflus sont nettoyés automatiquement).
+- `MEM0_APP_ID` : Identifiant de l'application (par défaut `"mirror-agent"`)
+- `MEM0_RUN_ID` : Identifiant d'exécution (par défaut `"test-run"`)
+
+### Méthodes CRUD Disponibles
+
+1. **`add_memory(memory: str)`** : Enregistre un souvenir textuel simple (`metadata={"type": "memory"}`).
+2. **`add_message(message: AnyMessage)`** : Enregistre un message LangChain (`HumanMessage`, `AIMessage`, `SystemMessage`) avec ses métadonnées `message_type` et `additional_kwargs`.
+3. **`add_document(document: Document)`** : Enregistre un `Document` avec `"type": "document"`.
+4. **`get_memories(query="", metadata=None)`** : Interroge l'API en appliquant les filtres `user_id`, `agent_id`, `app_id` et `run_id`.
+5. **`get_messages() -> Sequence[AnyMessage]`** :
+   - Récupère les souvenirs `metadata={"type": "message"}`.
+   - Instancie la classe concrète via `MESSAGE_TYPES` (`HumanMessage`, `AIMessage`, `SystemMessage`).
+   - Isole les erreurs réseau des erreurs de parsing unitaire et valide défensivement `metadata`.
+6. **`get_documents() -> Sequence[Document]`** :
+   - Récupère les souvenirs `metadata={"type": "document"}` et reconstruit les objets `Document`.
+
+<Callout title="Règle Critique sur les Filtres de l'API Cloud Mem0" type="error">
+  Avec `MemoryClient` (API Cloud), les filtres `agent_id`, `user_id`, `app_id` et `run_id` doivent obligatoirement figurer **à la racine** du dictionnaire envoyé à `client.add([memory_dict])` et `client.search(**search_params)`. Les imbriquer sous une clé `"filters"` provoque une erreur `HTTP 400 Bad Request`.
+</Callout>
+
+---
+
+## 3. Diagnostic des Limites Actuelles & Amélioration Prévue (Mode Hybride Cloud / Local)
+
+L'analyse du code actuel met en évidence deux axes d'amélioration majeurs documentés dans la **[Feuille de Route P0/P1](/docs/roadmap/01-p0-decouplage-etat)** :
+
+### Limite n°1 : Dépendance bloquante à `MEM0_API_KEY`
+Comme `Mem0Memory` n'utilise que `MemoryClient`, il est impossible de faire tourner la mémoire de l'agent sans créer un compte sur `app.mem0.ai`.
+
+**Solution (Mode Hybride Automatique)** :
+Faire évoluer `Mem0Memory.__init__` pour choisir automatiquement le moteur selon la configuration :
+- **Si `MEM0_API_KEY` est défini dans `.env`** $\rightarrow$ utilise `MemoryClient` (Mode Cloud SaaS).
+- **Si `MEM0_API_KEY` est absent** $\rightarrow$ bascule automatiquement sur la classe locale open-source `Memory.from_config(...)` branchée sur le **ChromaDB** local du projet, les embeddings `BAAI/bge-large-en-v1.5` déjà en cache et **Ollama** (ou OpenAI) :
+
+```python
+from mem0 import Memory, MemoryClient
+
+# Exemple d'initialisation 100 % locale sans clé MEM0_API_KEY :
+local_config = {
+    "vector_store": {
+        "provider": "chroma",
+        "config": {
+            "collection_name": "mirror_agent_memories",
+            "path": "data/chroma_mem0",
+        },
+    },
+    "llm": {
+        "provider": "ollama",  # Ou "openai"
+        "config": {
+            "model": "llama3.2:latest",
+            "ollama_base_url": "http://localhost:11434",
+        },
+    },
+    "embedder": {
+        "provider": "huggingface",
+        "config": {
+            "model": "BAAI/bge-large-en-v1.5",
+        },
+    },
+}
+local_memory = Memory.from_config(local_config)
+```
+
+### Limite n°2 : Utilisation de Mem0 comme historique de chat brut (`reduce_messages`)
+Dans `src/retrieval_graph/state.py`, `reduce_messages` envoie chaque réplique à Mem0 puis appelle `mem0.get_messages()` à chaque tour de parole.
+- Or, `mem0.search` est conçu pour la **recherche sémantique de souvenirs à long terme** (avec une indexation asynchrone côté serveur), et non pour restituer dans l'ordre chronologique exact les messages de la conversation en cours.
+- **Solution ([RFC 03 — P1](/docs/roadmap/03-p1-boucle-reflexive))** : Confier l'historique immédiat de la conversation au Checkpointer natif de LangGraph (`add_messages`), et réserver Mem0 (Cloud ou Local) à l'extraction et la recherche des **insights psychologiques durables** via le nœud `reflect`.

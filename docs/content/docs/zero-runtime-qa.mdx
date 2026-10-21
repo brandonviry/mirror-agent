@@ -1,0 +1,53 @@
+---
+title: Expérimentation Zero-Runtime QA
+description: Méthodologie d'amélioration et de fiabilisation du code par analyse théorique des invariants, inspection des types et vérification statique sans exécution.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+<Callout title="La Question Centrale" type="info">
+  *« Sans équipe de QA humaine, est-il actuellement possible pour une personne solo de vérifier et garantir que le code amélioré par l'IA est fonctionnel et robuste, sans exécuter le système complet et sans devoir superviser l'IA à 100 % ? »*
+</Callout>
+
+## Philosophie & Objectif de la Démarche
+
+Ce fork a été amélioré **sans jamais lancer l'application complète**. L'objectif est d'expérimenter l'amélioration incrémentale d'une base de code existante par l'IA uniquement par :
+1. **Analyse théorique des invariants et des contrats de types** : Identifier les erreurs qui se produiraient à l'exécution par simple lecture des définitions de types des bibliothèques tierces.
+2. **Corrélation entre gestion d'exceptions et assertions de tests** : Comprendre comment une gestion d'erreurs trop permissive déplace ou masque les symptômes d'un bug.
+3. **Conformité aux règles d'analyse statique** : Vérifier que le code respecte les contraintes du projet (`py_compile`, typage Mypy, règles Ruff comme `T201` interdisant `print()`) sans avoir besoin de clés API ni d'infrastructure active.
+
+---
+
+## Étude de Cas : Refactoring de `src/retrieval_graph/mem0_client.py`
+
+Dans `src/retrieval_graph/mem0_client.py`, les méthodes `get_messages()` et `get_documents()` présentaient quatre problèmes critiques identifiés et corrigés par analyse statique :
+
+### 1. Correction du Bug d'Instanciation `AnyMessage` (`TypeError: Cannot instantiate typing.Union`)
+
+- **Avant** : `get_messages()` appelait directement `AnyMessage(content=..., type=..., additional_kwargs=...)`.
+- **Diagnostic théorique** : Dans `langchain_core.messages`, `AnyMessage` est un alias de type `typing.Union` regroupant les classes de messages, et **non** une classe concrète instanciable. Tenter de l'appeler comme un constructeur lève systématiquement `TypeError: Cannot instantiate typing.Union`.
+- **Symptôme masqué** : Comme cet appel était enveloppé dans un bloc `try...except Exception:` générique retournant `[]`, l'erreur `TypeError` était silencieusement avalée et `get_messages()` renvoyait toujours une liste vide `[]`, faisant échouer plus loin les assertions de `tests/test_mem0_integration.py` (`self.assertTrue(...)`).
+- **Correction appliquée** : Table de correspondance explicite `MESSAGE_TYPES` vers les classes concrètes de LangChain (`HumanMessage`, `AIMessage`, `SystemMessage`) :
+
+```python
+MESSAGE_TYPES: Dict[str, type[HumanMessage | AIMessage | SystemMessage]] = {
+    "human": HumanMessage,
+    "ai": AIMessage,
+    "system": SystemMessage,
+}
+```
+
+### 2. Isolation Granulaire des Erreurs (Stockage vs Parsing Unitaire)
+
+- **Avant** : Un seul bloc `try...except` entourait à la fois l'appel réseau `self.get_memories(...)` et toute la boucle `for memory in memories:`. Une seule entrée malformée dans l'historique interrompait la boucle et faisait perdre tous les messages précédents.
+- **Après** : Les pannes réseau/API de `self.get_memories(...)` sont capturées séparément des erreurs de parsing propres à chaque élément de la boucle `for`, permettant d'ignorer une entrée corrompue tout en préservant le reste de la conversation.
+
+### 3. Journalisation Structurée au lieu de `print()` (Conformité Ruff `T201`)
+
+- **Avant** : Utilisait `print(f"Error retrieving messages: {e}")`, ce qui violait la règle Ruff `T201` (`flake8-print`) activée dans `pyproject.toml` et supprimait la trace de pile (*stack trace*).
+- **Après** : Utilisation de `logger.exception(...)` et `logger.warning(...)` via le module standard `logging` de Python.
+
+### 4. Extraction Défensive (`Null-Safe`) des Métadonnées et du Contenu
+
+- **Avant** : `memory.get("metadata", {}).get("message_type", "human")` levait une `AttributeError: 'NoneType' object has no attribute 'get'` dès que la clé `"metadata"` était présente dans le JSON retourné par l'API avec la valeur `None`.
+- **Après** : Validation explicite `if not isinstance(metadata, dict): metadata = {}` et prise en charge des deux formats de charge utile Mem0 (`memory.get("text") or memory.get("memory") or ""`).

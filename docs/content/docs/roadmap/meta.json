@@ -1,0 +1,12 @@
+{
+  "title": "Feuille de Route (RFCs)",
+  "pages": [
+    "index",
+    "00-audit-codebase",
+    "01-p0-decouplage-etat",
+    "02-p1-fournisseurs-locaux-ollama",
+    "03-p1-boucle-reflexive",
+    "04-p2-rag-hybride-obsidian",
+    "05-p3-observabilite-tests-ui"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "title": "Mirror Agent",
+  "pages": [
+    "---Introduction & Démarrage---",
+    "index",
+    "installation",
+    "zero-runtime-qa",
+    "plan-projet",
+    "---Architecture & Graphes---",
+    "...architecture",
+    "---Mémoire, RAG & Évaluation---",
+    "...memoire-et-rag",
+    "---Feuille de Route (RFCs)---",
+    "...roadmap"
+  ]
+}

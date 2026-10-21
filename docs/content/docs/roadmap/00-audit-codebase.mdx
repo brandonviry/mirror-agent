@@ -1,0 +1,61 @@
+---
+title: 00 — Audit de la Codebase Actuelle
+description: Diagnostic technique détaillé ligne par ligne des dettes architecturales, effets de bord et bugs latents.
+---
+
+Ce document présente l'audit technique complet de l'état actuel du dépôt **Mirror Agent** (`src/retrieval_graph/`, `utils/`, `tools/`, `tests/`, `pyproject.toml`). Il sert de base factuelle aux chantiers `01` à `05`.
+
+---
+
+## 1. Effets de Bord à l'Import (*Import-Time Side Effects*)
+
+Plusieurs modules exécutent des connexions réseau ou vérifient des variables d'environnement dès leur importation par Python, ce qui empêche l'exécution de tests unitaires hors-ligne et fragilise le démarrage :
+
+| Fichier & Lignes | Comportement Actuel à l'Import | Conséquence Directe |
+| :--- | :--- | :--- |
+| `src/retrieval_graph/state.py` (L33) | `mem0 = Mem0Memory()` est exécuté au niveau global lors du chargement de `state.py`. | Lève immédiatement `ValueError("MEM0_USER_ID must be set...")` et instancie `MemoryClient` dès qu'un test ou outil importe `State`, `InputState` ou `graph`. |
+| `src/retrieval_graph/retrieval.py` (L29-35) | `cohere_reranker = CohereRerank(model="rerank-english-v3.0")` est exécuté au niveau global. | Émet une erreur de log avec stacktrace complète à chaque import si `COHERE_API_KEY` est absent, même si l'utilisateur ne souhaite pas utiliser Cohere. |
+| `src/retrieval_graph/retrieval.py` (L26) | `logging.basicConfig(level=logging.INFO, ...)` appelé au niveau global d'un module de bibliothèque. | Écrase la configuration de logging de l'application hôte ou de LangGraph Server. |
+| `utils/obsidian_monitor.py` (L22-32) | `client = google.cloud.logging.Client()` est appelé dès l'import du module. | Crash immédiat (`DefaultCredentialsError`) sur toute machine locale non authentifiée auprès de Google Cloud Platform. |
+
+---
+
+## 2. Incohérences de Typage et de Modèle d'État
+
+1. **Rupture d'héritage entre `State` et `InputState` (`src/retrieval_graph/state.py` L123-158)** :
+   - `InputState` définit le champ `messages: Annotated[Sequence[AnyMessage], reduce_messages]`.
+   - Pourtant, `@dataclass class State:` (ligne 147) **n'hérite pas de `InputState`** (`class State:` au lieu de `class State(InputState):`), alors que tous les nœuds de `graph.py` accèdent à `state.messages` (`state.messages[-1]` aux lignes 71, 101, 121, 184, 231, 275). Cela viole la vérification statique des types (`mypy --strict`) et provoque un `AttributeError` si `State` est instancié directement.
+
+2. **Désynchronisation de `retriever_provider` (`configuration.py` L34-41 vs `retrieval.py` L280-302)** :
+   - Dans `IndexConfiguration` (`configuration.py`), `retriever_provider` est typé `Literal["chroma"]`.
+   - Or, `make_retriever` (`retrieval.py`) implémente 5 fournisseurs : `"chroma"`, `"elastic"`, `"elastic-local"`, `"pinecone"` et `"mongodb"`.
+   - De plus, à la ligne 300 de `retrieval.py`, le message d'erreur exécute `Configuration.__annotations__['retriever_provider'].__args__` : comme `retriever_provider` est défini sur la classe parente `IndexConfiguration` et non redéfini sur `Configuration`, cet accès lève un `KeyError: 'retriever_provider'`.
+
+3. **Test unitaire hors-contrat dans `tests/unit_tests/test_configuration.py`** :
+   - Le test appelle `Configuration.from_runnable_config({"user_id": "foo"})` alors que `from_runnable_config` attend un `RunnableConfig` structuré sous la clé `"configurable"` (`{"configurable": {"user_id": "foo"}}`), et ne comporte aucune assertion (`assert`).
+
+4. **Utilisation de `langchain_core.pydantic_v1` déprécié (`src/retrieval_graph/graph.py` L17)** :
+   - `SearchQuery`, `RetrievalDecision` et `ReasoningDecision` héritent de `langchain_core.pydantic_v1.BaseModel`, déprécié dans `langchain-core>=0.3` au profit de `pydantic.BaseModel` (Pydantic v2 natif).
+
+---
+
+## 3. Rigidité des Modèles LLM, Embeddings & Reranking
+
+1. **Modèle de raisonnement codé en dur dans `src/retrieval_graph/graph.py` (L259-315)** :
+   - Dans `apply_reasoning`, si `"gemini"` est présent dans `configuration.reasoning_model.lower()`, la ligne 284 ignore la valeur exacte configurée et instancie en dur `genai.GenerativeModel("gemini-2.0-flash-thinking-exp-01-21")`.
+   - Dans la branche `else` (lignes 293-314), se trouve un bloc de code mort (`if "gemini" in configuration.reasoning_model.lower():` à la ligne 295) ainsi qu'un appel `payload = {"contents": [message_value]}` (ligne 312) spécifique à Gemini qui fait échouer tout autre modèle LangChain (`OpenAI`, `Anthropic`, `Ollama`).
+
+2. **Sérialisation `pickle` d'objets `HuggingFaceEmbeddings` (`src/retrieval_graph/retrieval.py` L39-58)** :
+   - La fonction `load_embeddings_model` sérialise l'instance complète `HuggingFaceEmbeddings` avec `pickle.dump` / `pickle.load` dans `~/.cache/mirror-agent/..._embeddings.bin`, alors que HuggingFace met déjà en cache les poids sur disque et qu'un `@functools.lru_cache` suffit en mémoire.
+
+---
+
+## 4. Duplication et Fragmentation du Pipeline RAG & Mémoire
+
+1. **Deux pipelines d'indexation incompatibles** :
+   - `src/retrieval_graph/index_graph.py` indexe via `make_retriever(config)` avec `user_id` et envoie chaque document dans `Mem0`.
+   - `utils/obsidian_indexer.py` écrit directement dans ChromaDB (`data/chroma`, collection `obsidian`) **sans `user_id`** et en appelant `GoogleGenerativeAI(model="gemini-1.5-flash")` codé en dur.
+2. **Mauvais usage de Mem0 comme stockage de session brut (`state.py` L105-120)** :
+   - `reduce_messages` envoie chaque message à `mem0.ai` puis appelle immédiatement `mem0.get_messages()`. Or, l'indexation de `mem0.search` est asynchrone côté serveur et trie par similarité sémantique plutôt que par ordre chronologique strict.
+3. **Absence du Nœud de Réflexion (`Reflector`)** :
+   - Prévu dans le plan initial, le nœud post-réponse chargé de synthétiser les schémas psychologiques de l'utilisateur n'est pas encore branché dans `graph.py`.

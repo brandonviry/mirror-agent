@@ -1,0 +1,69 @@
+---
+title: Vue d'Ensemble de l'Architecture
+description: Schéma global et interactions entre RetrievalGraph, IndexGraph, Mem0 et ChromaDB.
+---
+
+Plutôt qu'un script monolithique, **Mirror Agent** est structuré autour de deux graphes d'état **LangGraph** déclarés dans `langgraph.json` :
+
+1. **`retrieval_graph` (`src/retrieval_graph/graph.py`)** : Le pipeline principal de conversation, de recherche documentaire et de raisonnement analytique.
+2. **`indexer` (`src/retrieval_graph/index_graph.py`)** : Le pipeline d'ingestion et d'indexation des documents dans la base vectorielle.
+
+---
+
+## Schéma d'Architecture Global
+
+```text
+                                                    ┌───────────────────────────────────────────────────┐
+                                                    │               Interface Utilisateur               │
+                                                    │  - Reçoit les réponses finales de l'IA            │
+                                                    │  - Envoie les requêtes/messages à l'Agent         │
+                                                    └───────────────▲───────────────────────────────────┘
+                                                                    │
+                                                                    │ (1) messages & entrée utilisateur
+                                                                    │
+                 ┌──────────────────────────────────────────────────┴──────────────────────────────────────────────────┐
+                 │                                   mirror-agent "RetrievalGraph"                                     │
+                 │           (Défini dans src/retrieval_graph/graph.py, compilé dans `graph`)                          │
+                 │                                                                                                     │
+                 │   ┌─────────────────────────────────────────────────────────────────────────────────────────────┐   │
+                 │   │  Nœuds du Flux (StateGraph de langgraph.graph)                                              │   │
+                 │   │---------------------------------------------------------------------------------------------│   │
+                 │   │  1) "__start__" ────────────────────> "should_retrieve" (décide retrieve vs respond)        │   │
+                 │   │  2) "should_retrieve" ──(si next="retrieve")─> "generate_query" ──> "retrieve"              │   │
+                 │   │                       └─(si next="respond")──> "should_reason"                              │   │
+                 │   │  3) "retrieve" ──────────────────────────────> "should_reason"                              │   │
+                 │   │  4) "should_reason" ────(si next="reason")───> "apply_reasoning" (Gemini 2.0 Flash Thinking)│   │
+                 │   │                     └───(si next="respond")──> "respond"                                    │   │
+                 │   │  5) "apply_reasoning" ───────────────────────> produit `reasoning_trace` ──> "respond"      │   │
+                 │   │  6) "respond" ───────────────────────────────> génère la réponse socratique finale          │   │
+                 │   └─────────────────────────────────────────────────────────────────────────────────────────────┘   │
+                 └──────────────────────────────────────────────────┬──────────────────────────────────────────────────┘
+                                                                    │
+                                                                    │ (2) appelle make_retriever(config)
+                                                                    ▼
+        ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+        │                                          retrieval.py : make_retriever(...)                                             │
+        │  - Fournisseur par défaut : "chroma" (ChromaDB local, collection "obsidian", embeddings BAAI/bge-large-en-v1.5)         │
+        │  - Supporte également : "elastic" / "elastic-local", "pinecone", "mongodb"                                              │
+        │  - Enveloppe le retriever de base avec ContextualCompressionRetriever + CohereRerank ("rerank-english-v3.0")            │
+        └─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Résumé des Interactions Clés
+
+1. **Entrée Utilisateur** : L'utilisateur envoie un message (ou des documents à indexer) via LangGraph Studio ou le SDK LangGraph.
+2. **Aiguillage du Graphe** :
+   - `IndexGraph` est appelé pour l'ingestion de documents.
+   - `RetrievalGraph` est appelé pour le dialogue introspectif.
+3. **Décision et Recherche (`RetrievalGraph`)** :
+   - Le nœud `should_retrieve` détermine si la question nécessite un contexte personnel (`"retrieve"`) ou non (`"respond"`).
+   - Si `"retrieve"`, `generate_query` formule une requête optimisée et `retrieve` interroge la base vectorielle configurée via `make_retriever(...)` (par défaut **ChromaDB** + re-ranking **CohereRerank**).
+4. **Raisonnement Analytique** :
+   - Le nœud `should_reason` évalue si la requête exige une analyse complexe, logique ou multi-étapes.
+   - Si `"reason"`, `apply_reasoning` appelle **Gemini 2.0 Flash Thinking** (`gemini-2.0-flash-thinking-exp-01-21`) et stocke sa réflexion dans `state.reasoning_trace`.
+5. **Génération de la Réponse Socratique** :
+   - Le nœud `respond` assemble l'historique des messages, les documents récupérés (`retrieved_docs`) et la trace de raisonnement (`reasoning_trace`) pour générer une réponse socratique via `response_model` (`openai/gpt-4o`).
+6. **Persistance dans Mem0** :
+   - À chaque mise à jour de l'état, les réducteurs `reduce_messages` et `reduce_docs` synchronisent les messages et documents avec `mem0.ai` via `Mem0Memory`.
