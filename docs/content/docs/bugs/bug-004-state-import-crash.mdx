@@ -1,0 +1,85 @@
+---
+title: "BUG-004 : Crash ValueError à l'import de state.py"
+description: "Fiche du bug BUG-004 (Issue GitHub #4) : Crash immédiat lors de l'import de retrieval_graph.state si MEM0_USER_ID est absent de l'environnement, et contournement."
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# BUG-004 : Crash `ValueError` dès l'import de `state.py` sans `MEM0_USER_ID`
+
+| Métadonnée | Valeur |
+| :--- | :--- |
+| **Identifiant** | `BUG-004` |
+| **Issue GitHub** | [brandonviry/mirror-agent#4](https://github.com/brandonviry/mirror-agent/issues/4) |
+| **Statut** | 🔴 **OUVERT** (Contournement immédiat documenté ci-dessous) |
+| **Sévérité** | `P0` — Critique (Empêche l'import du package en CI/CD ou hors-ligne) |
+| **Fichier & Ligne** | `src/retrieval_graph/state.py` (ligne `33` et ligne `132`) |
+| **Correctif Cible** | [RFC P0 — Découplage de l'État (`01-p0-decouplage-etat`)](/docs/roadmap/01-p0-decouplage-etat) |
+
+---
+
+## 1. Symptôme Observé
+
+Dès qu'un script Python, un test `pytest` ou le serveur LangGraph exécute `import retrieval_graph.state` ou `import retrieval_graph.graph` sans que la variable d'environnement `MEM0_USER_ID` ne soit préalablement définie, le processus crashe immédiatement au chargement du module :
+
+```text
+ValueError: MEM0_USER_ID must be set in the environment
+```
+
+Plus encore, chaque nouvelle instanciation de `InputState()` sans argument `messages` déclenche un appel réseau synchrone bloquant vers `https://api.mem0.ai/v1/memories/`.
+
+---
+
+## 2. Cause Racine (*Root Cause*)
+
+Dans `src/retrieval_graph/state.py`, le client `Mem0Memory` est instancié directement dans la portée globale du module (`module-level side effect`) à la ligne `33`, et sa méthode `get_messages` est branchée comme `default_factory` du champ `messages` à la ligne `132` :
+
+```python
+# src/retrieval_graph/state.py (L33)
+mem0 = Mem0Memory()
+
+# src/retrieval_graph/state.py (L131-133)
+@dataclass(kw_only=True)
+class InputState:
+    messages: Annotated[list[AnyMessage], add_messages] = field(
+        default_factory=mem0.get_messages
+    )
+```
+
+---
+
+## 3. Contournement Immédiat (*Workaround*)
+
+<Callout type="warn" title="Application du contournement">
+Ce contournement permet d'exécuter Mirror Agent et ses tests unitaires sans modifier `src/retrieval_graph/state.py`.
+</Callout>
+
+### Option A — En développement local (`.env`)
+Assurez-vous que votre fichier `.env` à la racine du dépôt contient toujours `MEM0_USER_ID` :
+
+```bash
+MEM0_USER_ID="votre-identifiant-utilisateur"
+MEM0_API_KEY="m0-..."
+```
+
+### Option B — Dans les scripts Python ou les suites de tests (`pytest`)
+Définissez `MEM0_USER_ID` dans `os.environ` **avant** l'instruction `import` :
+
+```python
+import os
+
+# Doit impérativement précéder l'import de retrieval_graph
+os.environ.setdefault("MEM0_USER_ID", "test-user")
+os.environ.setdefault("MEM0_API_KEY", "test-key")
+
+from retrieval_graph.graph import graph
+```
+
+Pour éviter l'appel HTTP `get_messages()` lors de l'invocation du graphe, passez toujours explicitement la clé `"messages"` dans le dictionnaire d'entrée :
+
+```python
+from langchain_core.messages import HumanMessage
+
+# Passer explicitement "messages" court-circuite le default_factory=mem0.get_messages
+result = await graph.ainvoke({"messages": [HumanMessage(content="Bonjour")]})
+```

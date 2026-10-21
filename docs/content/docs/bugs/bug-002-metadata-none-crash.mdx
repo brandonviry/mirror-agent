@@ -1,0 +1,75 @@
+---
+title: "BUG-002 : Crash metadata=None & Perte d'Historique (Résolu)"
+description: "Fiche du bug BUG-002 (Issue GitHub #2) : AttributeError lorsque metadata vaut None et perte complète de la liste de messages au moindre élément malformé."
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# BUG-002 : `AttributeError` sur `metadata=None` et Perte Totale de l'Historique
+
+| Métadonnée | Valeur |
+| :--- | :--- |
+| **Identifiant** | `BUG-002` |
+| **Issue GitHub** | [brandonviry/mirror-agent#2](https://github.com/brandonviry/mirror-agent/issues/2) |
+| **Statut** | 🟢 **RÉSOLU / FERMÉ** (Corrigé dans le commit [`60c5871`](https://github.com/brandonviry/mirror-agent/commit/60c5871)) |
+| **Sévérité Initiale** | `P1` — Majeure (Perte silencieuse de tous les messages valides) |
+| **Fichier & Lignes** | `src/retrieval_graph/mem0_client.py` (`Mem0Memory.get_messages`) |
+
+<Callout type="info" title="Bug Résolu">
+Ce bug est **corrigé** dans la branche `main` depuis le commit `60c5871`.
+</Callout>
+
+---
+
+## 1. Symptôme Observé
+
+Lorsque l'API Mem0 retournait une liste de souvenirs dont un seul élément possédait `"metadata": null` (désérialisé en `None` par Python) ou ne contenait pas la clé `"memory"`, `Mem0Memory.get_messages()` levait :
+
+```text
+AttributeError: 'NoneType' object has no attribute 'get'
+```
+
+De plus, même si 99 souvenirs sur 100 étaient parfaitement valides, le 100e souvenir malformé provoquait l'abandon des 99 messages déjà construits et retournait `[]`.
+
+---
+
+## 2. Cause Racine (*Root Cause*)
+
+Le code initial présentait deux défauts cumulés :
+
+1. **Piège classique de `dict.get("metadata", {})`** : En Python, `memory.get("metadata", {})` ne retourne la valeur par défaut `{}` que si la clé `"metadata"` est **absente** du dictionnaire. Si la clé est présente avec la valeur `None` (`{"memory": "texte", "metadata": None}`), `.get()` retourne `None`, et l'appel chaîné `.get("role", "user")` plante avec `AttributeError`.
+2. **Bloc `try...except` englobant toute la boucle** : La boucle `for memory in memories:` n'avait aucune gestion d'erreur par élément ; toute exception sautait directement au `return []` final.
+
+---
+
+## 3. Correctif Appliqué (Commit `60c5871`)
+
+Chaque entrée de `memories` est désormais traitée dans son propre bloc `try...except` isolé, avec validation stricte des types `dict` et `str` :
+
+```python
+for memory in memories:
+    if not isinstance(memory, dict):
+        continue
+    try:
+        content = memory.get("memory")
+        if not isinstance(content, str):
+            continue
+        raw_metadata = memory.get("metadata")
+        metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
+        role = str(metadata.get("role", "user")).lower()
+        message_cls = MESSAGE_TYPES.get(role, HumanMessage)
+        messages.append(
+            message_cls(
+                content=content,
+                additional_kwargs=dict(metadata),
+            )
+        )
+    except Exception:
+        logger.warning("Skipping malformed memory entry: %r", memory, exc_info=True)
+```
+
+---
+
+## 4. Tests de Non-Régression
+
+Couvert par `test_get_messages_handles_none_metadata` et `test_get_messages_skips_malformed_entry_without_losing_valid_ones` dans `tests/unit_tests/test_mem0_client.py`.

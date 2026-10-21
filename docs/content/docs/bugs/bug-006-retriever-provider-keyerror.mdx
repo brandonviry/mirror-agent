@@ -1,0 +1,52 @@
+---
+title: "BUG-006 : KeyError sur retriever_provider"
+description: "Fiche du bug BUG-006 (Issue GitHub #6) : Désynchronisation de Literal['chroma'] dans configuration.py et KeyError sur Configuration.__annotations__ dans retrieval.py."
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# BUG-006 : Désynchronisation `Literal["chroma"]` et `KeyError` sur `Configuration.__annotations__`
+
+| Métadonnée | Valeur |
+| :--- | :--- |
+| **Identifiant** | `BUG-006` |
+| **Issue GitHub** | [brandonviry/mirror-agent#6](https://github.com/brandonviry/mirror-agent/issues/6) |
+| **Statut** | 🔴 **OUVERT** (Contournement immédiat documenté ci-dessous) |
+| **Sévérité** | `P1` — Majeure (Erreur de typage et `KeyError` masquant l'erreur de configuration) |
+| **Fichiers & Lignes** | `src/retrieval_graph/configuration.py` (`L35`) & `src/retrieval_graph/retrieval.py` (`L300`) |
+| **Correctif Cible** | [RFC P0 — Découplage de l'État (`01-p0-decouplage-etat`)](/docs/roadmap/01-p0-decouplage-etat) |
+
+---
+
+## 1. Symptôme Observé
+
+Ce bug comporte deux manifestations liées au paramètre `retriever_provider` :
+
+1. **Rejet par le vérificateur de types (`mypy` / IDE)** : Si vous configurez `retriever_provider="pinecone"` ou `"mongodb"`, l'analyseur statique signale une erreur de type car `IndexConfiguration.retriever_provider` est annoté `Annotated[Literal["chroma"], ...]` à la ligne `35` de `configuration.py`, alors même que `retrieval.py` supporte 5 bases vectorielles.
+2. **Crash `KeyError` au lieu d'un message explicite** : Si une valeur invalide est passée dans `embedding_model` (ou `retriever_provider` dans `make_text_encoder` à la ligne `300` de `retrieval.py`), le bloc `else:` tente de construire un `ValueError` informatif en lisant `Configuration.__annotations__['retriever_provider']`, mais lève à la place :
+
+```text
+KeyError: 'retriever_provider'
+```
+
+---
+
+## 2. Cause Racine (*Root Cause*)
+
+Dans `src/retrieval_graph/configuration.py`, le champ `retriever_provider` est défini sur la classe parente `IndexConfiguration`, dont hérite `Configuration(IndexConfiguration)`.
+Or, en Python, le dictionnaire `__annotations__` d'une sous-classe (`Configuration.__annotations__`) ne contient **que** les attributs déclarés directement dans `Configuration`, et non ceux hérités de `IndexConfiguration`.
+
+---
+
+## 3. Contournement Immédiat (*Workaround*)
+
+<Callout type="info" title="Valeurs exactes à utiliser">
+Assurez-vous que `retriever_provider` dans votre `RunnableConfig` (`{"configurable": {"retriever_provider": "..."}}`) utilise strictement l'une des 5 chaînes suivantes :
+- `"chroma"` (défaut)
+- `"elastic"`
+- `"elastic-local"`
+- `"pinecone"`
+- `"mongodb"`
+
+Et que `embedding_model` utilise le format `"provider/model"` (ex: `"openai/text-embedding-3-small"` ou `"cohere/embed-english-v3.0"`).
+</Callout>

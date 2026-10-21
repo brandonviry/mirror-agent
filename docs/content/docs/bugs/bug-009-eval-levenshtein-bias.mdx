@@ -1,0 +1,59 @@
+---
+title: "BUG-009 : Biais Levenshtein dans eval_rag_pipeline.py"
+description: "Fiche du bug BUG-009 (Issue GitHub #9) : Faux négatifs systématiques de similarity_score_metric dans utils/eval_rag_pipeline.py à cause de l'asymétrie de longueur Levenshtein."
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# BUG-009 : Biais Mathématique de la Distance de Levenshtein dans `utils/eval_rag_pipeline.py`
+
+| Métadonnée | Valeur |
+| :--- | :--- |
+| **Identifiant** | `BUG-009` |
+| **Issue GitHub** | [brandonviry/mirror-agent#9](https://github.com/brandonviry/mirror-agent/issues/9) |
+| **Statut** | 🔴 **OUVERT** (Contournement immédiat documenté ci-dessous) |
+| **Sévérité** | `P2` — Modérée (Faux négatifs systématiques lors de l'évaluation de similarité RAG) |
+| **Fichier & Lignes** | `utils/eval_rag_pipeline.py` (lignes `56` à `58`) |
+| **Correctif Cible** | [RFC P3 — Observabilité, Tests & UI (`05-p3-observabilite-tests-ui`)](/docs/roadmap/05-p3-observabilite-tests-ui) |
+
+---
+
+## 1. Symptôme Observé
+
+Lors de l'exécution du benchmark d'évaluation `utils/eval_rag_pipeline.py`, la métrique `similarity_score_metric` échoue systématiquement (`success = False`), affichant des scores compris entre `0.01` et `0.05` (alors que le seuil de réussite est fixé à `0.8`), même lorsque la réponse de l'agent est pertinente et exacte.
+
+---
+
+## 2. Cause Racine (*Root Cause*)
+
+Aux lignes `56-58` de `utils/eval_rag_pipeline.py`, la similarité entre la réponse générée (`generated_answer`) et chaque document récupéré (`doc.page_content`) est calculée via la distance d'édition caractère par caractère de **Levenshtein** :
+
+```python
+similarity = [
+    1 - Levenshtein.distance(generated_answer, doc.page_content)
+    / max(len(generated_answer), len(doc.page_content))
+    for doc in retrieved_docs
+]
+score = sum(similarity) / len(similarity) if similarity else 0
+return score > 0.8
+```
+
+Or :
+- Les chunks documentaires (`doc.page_content`) sont découpés avec `chunk_size=3000` caractères (`L93`).
+- Une réponse synthétique (`generated_answer`) mesure typiquement entre `80` et `200` caractères.
+- Mathématiquement, pour deux chaînes de longueurs `L1 = 100` et `L2 = 3000`, la distance de Levenshtein est minorée par `|L2 - L1| = 2900`.
+- Par conséquent, le score maximal théorique est :
+
+```text
+Score_max = 1 - (2900 / 3000) = 100 / 3000 ≈ 0.033  (<< seuil 0.8)
+```
+
+Il est donc **mathématiquement impossible** d'atteindre le seuil `0.8` avec cette formule dès lors que la réponse est plus courte que le chunk source.
+
+---
+
+## 3. Contournement Immédiat (*Workaround*)
+
+<Callout type="info" title="Utiliser exact_match_metric ou évaluer par sous-chaîne">
+En attendant le remplacement de `Levenshtein.distance` par une **similarité cosinus d'embeddings** (spécifié dans la [RFC P3](/docs/roadmap/05-p3-observabilite-tests-ui)), interprétez uniquement le résultat de la première métrique (`exact_match_metric`) lors de l'exécution de `utils/eval_rag_pipeline.py`, qui vérifie si la réponse attendue est contenue dans les chunks récupérés (`expected_answer.lower() in doc.page_content.lower()`).
+</Callout>

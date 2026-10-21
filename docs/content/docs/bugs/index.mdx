@@ -1,0 +1,60 @@
+---
+title: Registre des Bugs Connus & Contournements
+description: Catalogue centralisé des bugs ouverts et résolus de Mirror Agent, synchronisé avec GitHub Issues et incluant les contournements (workarounds) immédiats.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Cards, Card } from 'fumadocs-ui/components/card';
+
+# Registre des Bugs Connus & Contournements
+
+Cette section constitue le **Pilier #8 (Limites connues, Bugs & Contournements)** de la documentation officielle de **Mirror Agent**.
+
+Elle adopte une approche **Hybride synchronisée avec GitHub Issues** :
+- Chaque bug possède une **Fiche Technique détaillée** dans cette documentation (symptôme, fichier et lignes exactes, cause racine, contournement immédiat et correctif cible).
+- Chaque fiche est reliée bidirectionnellement à une **Issue GitHub officielle** sur [`brandonviry/mirror-agent/issues`](https://github.com/brandonviry/mirror-agent/issues) avec son état réel (**🟢 RÉSOLU / FERMÉ** ou **🔴 OUVERT**).
+
+<Callout type="info" title="Pourquoi documenter les bugs ouverts ?">
+Conformément aux invariants du projet (`AGENTS.md`), nous documentons en toute transparence les limitations actuelles de la codebase ainsi que leurs **contournements immédiats (*workarounds*)** afin qu'aucun développeur ne reste bloqué lors de l'installation, des tests hors-ligne ou de l'exécution des graphes.
+</Callout>
+
+---
+
+## Vue Synoptique des Bugs (`BUG-001` à `BUG-009`)
+
+### 🔴 Bugs Actuellement Ouverts (Avec Contournement Immédiat)
+
+| ID & Fiche | Issue GitHub | Sévérité | Composant & Lignes | Symptôme Principal | Contournement Immédiat (*Workaround*) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **[`BUG-004`](/docs/bugs/bug-004-state-import-crash)** | [Issue #4](https://github.com/brandonviry/mirror-agent/issues/4) | 🔴 **P0** | `src/retrieval_graph/state.py` (`L33`) | Crash `ValueError` dès l'import de `state.py` ou `graph.py` si `MEM0_USER_ID` est absent. | Définir `MEM0_USER_ID="default-user"` dans `.env` ou `os.environ` **avant** tout `import retrieval_graph`. |
+| **[`BUG-005`](/docs/bugs/bug-005-state-inheritance-messages)** | [Issue #5](https://github.com/brandonviry/mirror-agent/issues/5) | 🟠 **P0** | `src/retrieval_graph/state.py` (`L147`) | `class State` n'hérite pas de `InputState` : `State().messages` lève `AttributeError`. | Passer un dictionnaire `{"messages": [...]}` à `graph.ainvoke()` ou instancier `InputState`. |
+| **[`BUG-006`](/docs/bugs/bug-006-retriever-provider-keyerror)** | [Issue #6](https://github.com/brandonviry/mirror-agent/issues/6) | 🟠 **P1** | `configuration.py` (`L35`) & `retrieval.py` (`L300`) | Désynchronisation `Literal["chroma"]` vs 5 backends + `KeyError` sur `__annotations__`. | Utiliser exclusivement `"chroma"`, `"elastic"`, `"elastic-local"`, `"pinecone"` ou `"mongodb"`. |
+| **[`BUG-007`](/docs/bugs/bug-007-apply-reasoning-gemini-lockin)** | [Issue #7](https://github.com/brandonviry/mirror-agent/issues/7) | 🟠 **P1** | `src/retrieval_graph/graph.py` (`L284-312`) | `apply_reasoning` code en dur Gemini Thinking et envoie un payload `{"contents": ...}` invalide aux autres LLMs. | Définir `GOOGLE_API_KEY` ou forcer le routage vers `generate_response` si vous n'utilisez pas Gemini. |
+| **[`BUG-008`](/docs/bugs/bug-008-gcp-credentials-import-crash)** | [Issue #8](https://github.com/brandonviry/mirror-agent/issues/8) | 🟡 **P2** | `utils/obsidian_monitor.py` (`L22`) & `gcp_logging.py` (`L17`) | Crash `DefaultCredentialsError` à l'import hors Google Cloud Platform. | Utiliser `IndexGraph` directement pour indexer Obsidian sans importer `obsidian_monitor.py`. |
+| **[`BUG-009`](/docs/bugs/bug-009-eval-levenshtein-bias)** | [Issue #9](https://github.com/brandonviry/mirror-agent/issues/9) | 🟡 **P2** | `utils/eval_rag_pipeline.py` (`L56-58`) | Le score de similarité Levenshtein plafonne sous `0.05` face à des chunks de 3000 caractères (seuil `0.8` impossible). | Évaluer le pipeline via `exact_match_metric` en attendant le passage aux embeddings cosinus (RFC P3). |
+
+---
+
+### 🟢 Bugs Résolus & Fermés (Corrigés et Vérifiés en QA)
+
+| ID & Fiche | Issue GitHub | Sévérité | Composant | Symptôme Initial | Correctif Appliqué |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **[`BUG-001`](/docs/bugs/bug-001-anymessage-union)** | [Issue #1](https://github.com/brandonviry/mirror-agent/issues/1) | 🟢 **Fermé** (`P0`) | `src/retrieval_graph/mem0_client.py` | `TypeError: Cannot instantiate typing.Union` lors de l'appel à `AnyMessage(...)`. | Table de dispatch explicite `MESSAGE_TYPES` (`HumanMessage`, `AIMessage`, `SystemMessage`) — Commit `60c5871`. |
+| **[`BUG-002`](/docs/bugs/bug-002-metadata-none-crash)** | [Issue #2](https://github.com/brandonviry/mirror-agent/issues/2) | 🟢 **Fermé** (`P1`) | `src/retrieval_graph/mem0_client.py` | `AttributeError` sur `metadata: null` et perte totale de l'historique au moindre élément malformé. | Vérification `isinstance(metadata, dict)` et isolation `try...except` par élément — Commit `60c5871`. |
+| **[`BUG-003`](/docs/bugs/bug-003-ruff-t201-logging)** | [Issue #3](https://github.com/brandonviry/mirror-agent/issues/3) | 🟢 **Fermé** (`P2`) | `src/retrieval_graph/mem0_client.py` | Échec du linter Ruff (`T201: print found`) et perte des stacktraces d'erreur. | Remplacement par `logging.getLogger(__name__)` (`logger.exception` / `logger.warning`) — Commit `60c5871`. |
+
+---
+
+## Accès Rapide aux Fiches Détaillées
+
+<Cards>
+  <Card title="🔴 BUG-004 : Crash à l'import de state.py" href="/docs/bugs/bug-004-state-import-crash" description="Instanciation globale de Mem0Memory() à la ligne 33 de state.py et contournement os.environ." />
+  <Card title="🔴 BUG-005 : State n'hérite pas de InputState" href="/docs/bugs/bug-005-state-inheritance-messages" description="Incohérence d'héritage dataclass sur l'attribut messages dans state.py." />
+  <Card title="🔴 BUG-006 : KeyError sur retriever_provider" href="/docs/bugs/bug-006-retriever-provider-keyerror" description="Désynchronisation du type Literal et crash __annotations__ dans retrieval.py." />
+  <Card title="🔴 BUG-007 : Verrouillage Gemini dans apply_reasoning" href="/docs/bugs/bug-007-apply-reasoning-gemini-lockin" description="Modèle expérimental codé en dur et payload incompatible avec OpenAI/Anthropic." />
+  <Card title="🔴 BUG-008 : Crash GCP DefaultCredentialsError" href="/docs/bugs/bug-008-gcp-credentials-import-crash" description="Initialisation globale de google.cloud.logging.Client() dans utils/." />
+  <Card title="🔴 BUG-009 : Biais Levenshtein d'évaluation RAG" href="/docs/bugs/bug-009-eval-levenshtein-bias" description="Asymétrie de longueur entre réponse générée et document chunké de 3000 caractères." />
+  <Card title="🟢 BUG-001 : Instanciation de AnyMessage (Résolu)" href="/docs/bugs/bug-001-anymessage-union" description="Correction du crash typing.Union dans Mem0Memory.get_messages." />
+  <Card title="🟢 BUG-002 : Crash metadata=None (Résolu)" href="/docs/bugs/bug-002-metadata-none-crash" description="Isolation des erreurs de désérialisation par message dans Mem0Memory." />
+  <Card title="🟢 BUG-003 : Linter Ruff T201 print() (Résolu)" href="/docs/bugs/bug-003-ruff-t201-logging" description="Migration vers le logger standard Python dans mem0_client.py." />
+</Cards>

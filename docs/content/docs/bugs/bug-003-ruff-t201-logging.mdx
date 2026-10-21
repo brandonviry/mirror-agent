@@ -1,0 +1,57 @@
+---
+title: "BUG-003 : Violation Ruff T201 print() (Résolu)"
+description: "Fiche du bug BUG-003 (Issue GitHub #3) : Échec du linter Ruff T201 (print interdit dans src/) et perte des traces d'erreur dans mem0_client.py."
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# BUG-003 : Violation du Linter Ruff `T201` (`print` interdit dans `src/`)
+
+| Métadonnée | Valeur |
+| :--- | :--- |
+| **Identifiant** | `BUG-003` |
+| **Issue GitHub** | [brandonviry/mirror-agent#3](https://github.com/brandonviry/mirror-agent/issues/3) |
+| **Statut** | 🟢 **RÉSOLU / FERMÉ** (Corrigé dans le commit [`60c5871`](https://github.com/brandonviry/mirror-agent/commit/60c5871)) |
+| **Sévérité Initiale** | `P2` — Modérée (Blocage du linter CI/CD et perte d'observabilité) |
+| **Fichier & Lignes** | `src/retrieval_graph/mem0_client.py` |
+
+<Callout type="info" title="Bug Résolu">
+Ce bug est **corrigé** dans la branche `main` depuis le commit `60c5871`.
+</Callout>
+
+---
+
+## 1. Symptôme Observé
+
+L'exécution de la commande de vérification statique `ruff check .` échouait sur `src/retrieval_graph/mem0_client.py` avec deux erreurs `T201` :
+
+```text
+src/retrieval_graph/mem0_client.py:24:13: T201 `print` found
+src/retrieval_graph/mem0_client.py:42:13: T201 `print` found
+```
+
+Par ailleurs, lorsqu'une erreur réseau ou d'authentification survenait avec l'API Mem0, seul le message court de l'exception était imprimé sur `stdout`, sans la pile d'appels (`traceback`) ni intégration avec le système de journalisation.
+
+---
+
+## 2. Cause Racine (*Root Cause*)
+
+Le fichier `pyproject.toml` active explicitement la règle Ruff `T20` (`flake8-print`) sur tout le code de production (`src/`), et n'autorise `T201` que dans `tests/` et `utils/` :
+
+```toml
+[tool.ruff.lint]
+select = ["E", "F", "I", "D", "T20", "UP"]
+per-file-ignores = { "tests/*" = ["D", "UP", "T201"], "utils/*" = ["D", "UP", "T201"] }
+```
+
+---
+
+## 3. Correctif Appliqué (Commit `60c5871`)
+
+Les appels `print()` ont été remplacés par un logger standard configuré au niveau du module (`logger = logging.getLogger(__name__)`), en utilisant `logger.exception(...)` pour conserver automatiquement la stacktrace complète :
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+```

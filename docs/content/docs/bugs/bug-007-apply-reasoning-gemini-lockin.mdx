@@ -1,0 +1,52 @@
+---
+title: "BUG-007 : Verrouillage Gemini dans apply_reasoning"
+description: "Fiche du bug BUG-007 (Issue GitHub #7) : Modèle Gemini Thinking codé en dur et payload incompatible avec OpenAI/Anthropic dans le nœud apply_reasoning."
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# BUG-007 : Modèle Gemini Thinking Codé en Dur et Payload Incompatible dans `apply_reasoning`
+
+| Métadonnée | Valeur |
+| :--- | :--- |
+| **Identifiant** | `BUG-007` |
+| **Issue GitHub** | [brandonviry/mirror-agent#7](https://github.com/brandonviry/mirror-agent/issues/7) |
+| **Statut** | 🔴 **OUVERT** (Contournement immédiat documenté ci-dessous) |
+| **Sévérité** | `P1` — Majeure (Échec de la branche `apply_reasoning` sans clé API Google Gemini) |
+| **Fichier & Lignes** | `src/retrieval_graph/graph.py` (lignes `284` à `315`) |
+| **Correctif Cible** | [RFC P1 — Fournisseurs Locaux & Découplage LLM (`02-p1-fournisseurs-locaux-ollama`)](/docs/roadmap/02-p1-fournisseurs-locaux-ollama) |
+
+---
+
+## 1. Symptôme Observé
+
+Lorsque le nœud `check_known_info` estime qu'une réflexion approfondie est nécessaire (`should_reason == "reason"`), le graphe route l'exécution vers le nœud `apply_reasoning` (`src/retrieval_graph/graph.py`).
+
+À cet instant :
+1. Même si l'utilisateur a configuré `query_model="openai/gpt-4.1"` ou `"anthropic/claude-3-5-sonnet-20240620"`, `apply_reasoning` ignore ce choix et tente d'instancier en dur `gemini-2.0-flash-thinking-exp-01-21` via `ChatGoogleGenerativeAI`, ce qui échoue si `GOOGLE_API_KEY` est absente.
+2. Si l'on entre dans la branche `else:` (lignes `307-315`), le code invoque le modèle avec un dictionnaire au format REST propriétaire de Google AI :
+
+```python
+response = await model.ainvoke({
+    "contents": [{
+        "parts": [{"text": formatted_prompt}]
+    }]
+})
+```
+
+Un tel appel `model.ainvoke({"contents": ...})` sur `ChatOpenAI` ou `ChatAnthropic` échoue immédiatement car LangChain attend une `str` ou une `list[BaseMessage]`.
+
+---
+
+## 2. Cause Racine (*Root Cause*)
+
+Le nœud `apply_reasoning` a été conçu initialement pour tester le modèle expérimental `gemini-2.0-flash-thinking-exp-01-21` sans passer par l'utilitaire unifié `load_chat_model()` (`src/retrieval_graph/utils.py`) ni par `Configuration.reasoning_model`.
+
+---
+
+## 3. Contournement Immédiat (*Workaround*)
+
+<Callout type="warn" title="Deux contournements possibles">
+1. **Renseigner `GOOGLE_API_KEY` dans `.env`** : Même si vous utilisez OpenAI comme `query_model` principal, définir une clé `GOOGLE_API_KEY` valide (le tier gratuit Google AI Studio suffit) permet au nœud `apply_reasoning` de fonctionner normalement.
+2. **Personnaliser `check_known_info_system_prompt`** : Si vous n'avez pas de clé Google AI, vous pouvez passer un `check_known_info_system_prompt` dans `configurable` demandant au routeur de toujours privilégier la réponse directe (`should_reason="no_reason"`) afin d'utiliser `generate_response` (qui respecte `configuration.query_model`).
+</Callout>

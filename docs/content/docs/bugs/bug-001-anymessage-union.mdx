@@ -1,0 +1,102 @@
+---
+title: "BUG-001 : TypeError sur AnyMessage (Résolu)"
+description: "Fiche du bug BUG-001 (Issue GitHub #1) : Crash TypeError: Cannot instantiate typing.Union lors de la désérialisation des messages dans mem0_client.py."
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# BUG-001 : `TypeError: Cannot instantiate typing.Union` sur `AnyMessage`
+
+| Métadonnée | Valeur |
+| :--- | :--- |
+| **Identifiant** | `BUG-001` |
+| **Issue GitHub** | [brandonviry/mirror-agent#1](https://github.com/brandonviry/mirror-agent/issues/1) |
+| **Statut** | 🟢 **RÉSOLU / FERMÉ** (Corrigé dans le commit [`60c5871`](https://github.com/brandonviry/mirror-agent/commit/60c5871)) |
+| **Sévérité Initiale** | `P0` — Critique (Rupture totale de la récupération de mémoire conversationnelle) |
+| **Fichier & Lignes** | `src/retrieval_graph/mem0_client.py` (`Mem0Memory.get_messages`) |
+
+<Callout type="info" title="Bug Résolu">
+Ce bug est **corrigé** dans la branche `main`. Aucune action ou contournement n'est requis si votre dépôt est à jour avec le commit `60c5871` ou ultérieur.
+</Callout>
+
+---
+
+## 1. Symptôme Observé
+
+Lorsque `Mem0Memory.get_messages()` était appelé (notamment lors de l'initialisation de `State.messages` dans `state.py`) et que l'API Mem0 retournait au moins un souvenir, Python levait immédiatement une exception :
+
+```text
+TypeError: Cannot instantiate typing.Union
+```
+
+Comme cette exception était capturée par un bloc `except Exception:` générique qui retournait `[]`, la mémoire à long terme de l'agent semblait systématiquement vide au redémarrage, même lorsque des centaines de messages étaient stockés dans Mem0 Cloud.
+
+---
+
+## 2. Cause Racine (*Root Cause*)
+
+Dans `langchain_core.messages`, `AnyMessage` n'est **pas** une classe concrète héritant de `BaseMessage`, mais un alias d'union de types (`typing.Union`) :
+
+```python
+# Définition interne dans langchain_core.messages :
+AnyMessage = Union[
+    AIMessage,
+    HumanMessage,
+    ChatMessage,
+    SystemMessage,
+    FunctionMessage,
+    ToolMessage,
+]
+```
+
+Or, l'implémentation initiale de `src/retrieval_graph/mem0_client.py` tentait d'instancier `AnyMessage` comme une classe ordinaire :
+
+```python
+# Code initial défectueux :
+from langchain_core.messages import AnyMessage
+
+message = AnyMessage(
+    content=memory["memory"],
+    role=memory.get("metadata", {}).get("role", "user"),
+    additional_kwargs=memory.get("metadata", {}),
+)
+```
+
+En Python (`3.11+`), appeler `typing.Union(...)` lève inconditionnellement `TypeError: Cannot instantiate typing.Union`.
+
+---
+
+## 3. Correctif Appliqué (Commit `60c5871`)
+
+Nous avons remplacé l'import de `AnyMessage` par les classes concrètes `AIMessage`, `BaseMessage`, `HumanMessage` et `SystemMessage`, associées à une table de routage `MESSAGE_TYPES` :
+
+```python
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+
+MESSAGE_TYPES: dict[str, type[BaseMessage]] = {
+    "user": HumanMessage,
+    "human": HumanMessage,
+    "assistant": AIMessage,
+    "ai": AIMessage,
+    "system": SystemMessage,
+}
+```
+
+Lors de la désérialisation dans `get_messages()`, le rôle est normalisé en minuscules et résolu vers la sous-classe appropriée (avec repli sécurisé sur `HumanMessage`) :
+
+```python
+role = str(metadata.get("role", "user")).lower()
+message_cls = MESSAGE_TYPES.get(role, HumanMessage)
+messages.append(
+    message_cls(
+        content=content,
+        additional_kwargs=dict(metadata),
+    )
+)
+```
+
+---
+
+## 4. Test de Non-Régression
+
+Ce bug est désormais verrouillé par le test unitaire `test_get_messages_instantiates_concrete_message_classes` dans `tests/unit_tests/test_mem0_client.py` (voir [Protocole Zero-Runtime QA](/docs/zero-runtime-qa)).

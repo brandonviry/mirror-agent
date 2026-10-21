@@ -1,0 +1,60 @@
+---
+title: "BUG-005 : State n'hérite pas de InputState"
+description: "Fiche du bug BUG-005 (Issue GitHub #5) : Absence d'héritage entre State et InputState dans state.py provoquant AttributeError sur state.messages."
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# BUG-005 : `class State` n'hérite pas de `InputState` (`AttributeError: 'State' object has no attribute 'messages'`)
+
+| Métadonnée | Valeur |
+| :--- | :--- |
+| **Identifiant** | `BUG-005` |
+| **Issue GitHub** | [brandonviry/mirror-agent#5](https://github.com/brandonviry/mirror-agent/issues/5) |
+| **Statut** | 🔴 **OUVERT** (Contournement immédiat documenté ci-dessous) |
+| **Sévérité** | `P0` — Critique (Rupture du contrat de typage `mypy` et crash à l'instanciation directe) |
+| **Fichier & Ligne** | `src/retrieval_graph/state.py` (ligne `147`) |
+| **Correctif Cible** | [RFC P0 — Découplage de l'État (`01-p0-decouplage-etat`)](/docs/roadmap/01-p0-decouplage-etat) |
+
+---
+
+## 1. Symptôme Observé
+
+Tous les nœuds de `src/retrieval_graph/graph.py` (`generate_query`, `check_known_info`, `apply_reasoning`, `generate_response`) sont annotés avec `state: State` et lisent `state.messages` :
+
+```python
+async def check_known_info(
+    state: State, *, config: RunnableConfig
+) -> dict[str, list[BaseMessage]]:
+    messages_history = "\n".join([f"{msg.type}: {msg.content}" for msg in state.messages[:-1]])
+```
+
+Pourtant, si l'on instancie `State()` directement en Python (par exemple pour tester un nœud unitairement) ou si l'on exécute `mypy --strict src/retrieval_graph/graph.py`, Python lève :
+
+```text
+AttributeError: 'State' object has no attribute 'messages'
+```
+
+---
+
+## 2. Cause Racine (*Root Cause*)
+
+Dans `src/retrieval_graph/state.py`, `InputState` déclare le champ `messages` (ligne `131`), mais `State` (ligne `147`) a été déclaré comme une `@dataclass` indépendante au lieu d'hériter de `InputState` :
+
+```python
+# src/retrieval_graph/state.py (L146-147)
+@dataclass(kw_only=True)
+class State:  # <-- Manque (InputState)
+    queries: Annotated[list[str], add_queries] = field(default_factory=list)
+    retrieved_docs: list[Document] = field(default_factory=list)
+    ...
+```
+
+---
+
+## 3. Contournement Immédiat (*Workaround*)
+
+<Callout type="warn" title="Comment contourner BUG-005 sans modifier state.py">
+1. **Lors de l'appel du graphe complet (`graph.ainvoke`)** : Passez toujours un dictionnaire Python `{"messages": [...]}` ou une instance de `InputState(messages=[...])`. LangGraph fusionne dynamiquement les clés de `input=InputState` dans l'état interne au moment de l'exécution.
+2. **Lors des tests unitaires d'un nœud isolé** : Si vous testez une fonction de nœud directement sans passer par `StateGraph`, utilisez `InputState` ou attachez l'attribut dynamiquement sur l'instance dans votre fixture de test.
+</Callout>
