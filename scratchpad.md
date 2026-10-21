@@ -24,7 +24,7 @@
   - 10 fichiers créés dans `docs/content/docs/bugs/` et déployés en production (`HTTP 200` sur `/docs/bugs`)
   - Mise à jour de `AGENTS.md` et `GEMINI.md` avec le protocole hybride de suivi des bugs
 - [ ] **Prochains Piliers à traiter étape par étape (selon validation utilisateur)** :
-  - [ ] Pilier #3 : Quick Start (`quick-start.mdx` — Premier lancement en 5 min avec code court)
+  - [X] Pilier #3 : Quick Start (`quick-start.mdx` — Premier lancement en 5 min avec code court)
   - [ ] Pilier #5 : Données & Modèles (`architecture/modele-donnees.mdx` — Schémas ER Mermaid Mem0, Chroma, LangGraph State)
   - [ ] Pilier #6 : API & Interfaces (`api-et-interfaces.mdx` — Endpoints LangGraph Server `/runs`, `/threads`, payloads JSON, erreurs)
   - [ ] Pilier #7 : Configuration Exhaustive & CLI (`configuration-reference.mdx` — Tableau complet des options, défauts, variables `.env` et CLI)

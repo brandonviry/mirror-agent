@@ -4,7 +4,6 @@ description: Guide de prise en main rapide de Mirror Agent : installation expres
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
-import { Steps, Step } from 'fumadocs-ui/components/steps';
 
 Ce guide **Quick Start** vous permet de faire tourner **Mirror Agent** en moins de 5 minutes sur son cas d'usage principal : **indexer une note personnelle et engager un dialogue d'introspection socratique**.
 
@@ -16,9 +15,7 @@ Pour le détail complet des prérequis système, des variables optionnelles et d
 
 ## 1. Installation Express (3 étapes)
 
-<Steps>
-<Step>
-### Cloner le dépôt et activer l'environnement virtuel
+### Étape 1 — Cloner le dépôt et activer l'environnement virtuel
 
 ```powershell
 git clone https://github.com/brandonviry/mirror-agent.git
@@ -28,10 +25,8 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1   # Linux / macOS : source .venv/bin/activate
 pip install -e .
 ```
-</Step>
 
-<Step>
-### Configurer le fichier `.env` minimal
+### Étape 2 — Configurer le fichier `.env` minimal
 
 Créez un fichier `.env` à la racine du projet avec les variables minimales requises par le pipeline par défaut :
 
@@ -45,18 +40,14 @@ OPENAI_API_KEY="sk-votre-cle-openai"
 GOOGLE_API_KEY="votre-cle-google-gemini"
 COHERE_API_KEY="votre-cle-cohere"
 ```
-</Step>
 
-<Step>
-### Vérifier l'installation (Sans consommer de crédits API)
+### Étape 3 — Vérifier l'installation (Sans consommer de crédits API)
 
 Avant même d'appeler un LLM externe, validez que le package et le client mémoire sont opérationnels :
 
 ```powershell
 python -m pytest tests/unit_tests -v
 ```
-</Step>
-</Steps>
 
 ---
 
