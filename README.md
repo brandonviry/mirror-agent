@@ -1,6 +1,11 @@
 # Mirror Agent — Votre Guide IA pour l'Introspection
 
+[![Documentation Fumadocs](https://img.shields.io/badge/Documentation_En_Ligne-mirror--agent--docs.vercel.app-000000?style=for-the-badge&logo=vercel)](https://mirror-agent-docs.vercel.app/docs)
+
 **Mirror Agent** est un compagnon IA conçu pour vous aider à mieux vous comprendre grâce à une introspection guidée et un dialogue socratique. Construit avec **LangGraph**, **LangChain**, **ChromaDB** et **Mem0**, il combine questionnement socratique, mémoire persistante à long terme, recherche dans vos documents personnels (ex. notes Obsidian) et raisonnement analytique multi-étapes.
+
+- **Documentation officielle en ligne (Fumadocs)** : [https://mirror-agent-docs.vercel.app/docs](https://mirror-agent-docs.vercel.app/docs)
+- **Feuille de route & RFCs (`P0` → `P3`)** : [https://mirror-agent-docs.vercel.app/docs/roadmap](https://mirror-agent-docs.vercel.app/docs/roadmap)
 
 ---
 
