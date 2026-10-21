@@ -1,27 +1,27 @@
-# https://weave-docs.wandb.ai/ Documentation
+# Documentation Weave (Weights & Biases)
 
-Source: https://weave-docs.wandb.ai/
+**Source** : [https://weave-docs.wandb.ai/](https://weave-docs.wandb.ai/)
 
-Weave is a lightweight toolkit for tracking and evaluating LLM applications, built by Weights & Biases.
+**Weave** est une boîte à outils légère conçue par **Weights & Biases** pour le suivi (tracking) et l'évaluation des applications basées sur des modèles de langage (LLM).
 
-- 👋 Getting Started
+---
 
-- Introduction
+## Introduction
 
-On this page
+L'objectif de Weave est d'apporter de la rigueur, des bonnes pratiques et de la composabilité au processus intrinsèquement expérimental du développement d'applications IA, sans alourdir la charge cognitive des développeurs.
 
-Introduction Weave is a lightweight toolkit for tracking and evaluating LLM applications, built by Weights & Biases. Our goal is to bring rigor, best-practices, and composability to the inherently experimental process of developing AI applications, without introducing cognitive overhead. Get started by decorating Python functions with @weave.op() . Seriously, try the 🍪 quickstart 🍪 or You can use Weave to: Log and debug language model inputs, outputs, and traces Build rigorous, apples-to-apples evaluations for language model use cases Organize all the information generated across the LLM workflow, from experimentation to evaluations to production What's next? ​ Try the Quickstart to see Weave in action.
+Pour démarrer, il suffit de décorer vos fonctions Python avec `@weave.op()`.
 
+Vous pouvez utiliser Weave pour :
+- **Journaliser et déboguer** les entrées, sorties et traces d'exécution des modèles de langage.
+- **Construire des évaluations rigoureuses et comparables** pour vos cas d'usage LLM (`weave.Evaluation`).
+- **Organiser l'ensemble des informations générées** tout au long du cycle de vie LLM, de l'expérimentation à l'évaluation jusqu'à la mise en production.
 
-# Introduction
+---
 
-- Log and debug language model inputs, outputs, and traces
+## Utilisation dans Mirror Agent (`utils/eval_rag_pipeline.py`)
 
-- Build rigorous, apples-to-apples evaluations for language model use cases
+Dans ce dépôt, **Weave** est utilisé par le script [`utils/eval_rag_pipeline.py`](../utils/eval_rag_pipeline.py) pour évaluer la qualité de la recherche documentaire (RAG) sur ChromaDB à partir de questions synthétiques générées via [`utils/generate_synthetic_questions.py`](../utils/generate_synthetic_questions.py) :
 
-- Organize all the information generated across the LLM workflow, from experimentation to evaluations to production
-
-
-## What's next?​
-
-Edit this page Last updated on Dec 31, 2024
+- La fonction `evaluate_retrieval_only` est décorée avec `@weave.op()` pour tracer chaque requête envoyée au retriever (`retriever_provider="chroma"`, `k=5`).
+- Le modèle d'évaluation `RetrievalOnlyModel` (`weave.Model`) et les métriques de précision (`exact_match_metric`, `similarity_score_metric` basées sur la distance de Levenshtein) sont orchestrés via `weave.Evaluation` sous le projet `weave.init("obsidian-rag-eval")`.

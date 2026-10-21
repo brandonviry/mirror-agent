@@ -1,162 +1,187 @@
+# Architecture Détaillée de Mirror Agent
+
+```text
                                                     ┌───────────────────────────────────────────────────┐
-                                                    │                  User Interface                   │
-                                                    │  - Receives final AI responses                   │
-                                                    │  - Sends queries/messages to the Agent           │
+                                                    │               Interface Utilisateur               │
+                                                    │  - Reçoit les réponses finales de l'IA            │
+                                                    │  - Envoie les requêtes/messages à l'Agent         │
                                                     └───────────────▲───────────────────────────────────┘
                                                                     │
-                                                                    │ (1) messages & user input
+                                                                    │ (1) messages & entrée utilisateur
                                                                     │
-                 ┌───────────────────────────────────────────────────┴─────────────────────────────────────────────────┐
-                 │                                    mirror-agent "RetrievalGraph"                                  │
-                 │            (Defined in src/retrieval_graph/graph.py, compiled to `graph`)                         │
-                 │                                                                                                   │
-                 │   ┌─────────────────────────────────────────────────────────────────────────────────────────────┐  │
-                 │   │  Flow Nodes (StateGraph from langgraph.graph)                                              │  │
-                 │   │-------------------------------------------------------------------------------------------│  │
-                 │   │                                                                                           │  │
-                 │   │  1) "__start__" ────────────────────> "should_retrieve" (should_retrieve function)        │  │
-                 │   │                               │ (decides whether to retrieve or respond)                  │  │
-                 │   │                               └────────────────────────────────────────────────────────────▶  │
-                 │   │                                                                                           │  │
-                 │   │  2) "should_retrieve" ──(if next="retrieve")─> "generate_query" (generate_query function) │  │
-                 │   │                               └──────────────(if next="respond")──────> "respond"         │  │
-                 │   │                                                                                           │  │
-                 │   │  3) "generate_query" ─────────────────────────────────────────────────────┬───────────────▶  │
-                 │   │       (uses ChatPromptTemplate & LLM to refine user question into a query)│               │  │
-                 │   │                                                                            │  (5) queries │  │
-                 │   │  4) "retrieve" (retrieve function)                                          ▼               │  │
-                 │   │       (performs doc retrieval via make_retriever(...) -> search)         "retrieved_docs"   │  │
-                 │   │                                                                                           │  │
-                 │   │  5) "respond" (respond function) ──────────────────────────────────────────────────────────▶  │
-                 │   │       (generates final answer using LLM, system prompt, conversation state, etc.)         │  │
-                 │   │                                                                                           │  │
-                 │   └─────────────────────────────────────────────────────────────────────────────────────────────┘  │
-                 │                                                                                                   │
-                 │                           Internal Data Structures (from state.py)                                 │
-                 │   ┌─────────────────────────────────────────────────────────────────────────────────────────────┐  │
-                 │   │ class State(InputState):                                                                    │  │
-                 │   │    - messages: Sequence[AnyMessage]    ( conversation history )                             │  │
-                 │   │    - queries: list[str]                ( generated search queries )                         │  │
-                 │   │    - retrieved_docs: list[Document]    ( search results from the retriever )               │  │
-                 │   │    - next: str                          ( routing field: "retrieve" / "respond" )           │  │
-                 │   └─────────────────────────────────────────────────────────────────────────────────────────────┘  │
-                 │                                                                                                   │
-                 │                              Prompt & LLM Integration (from prompts.py, utils.py)                 │
-                 │   ┌─────────────────────────────────────────────────────────────────────────────────────────────┐  │
-                 │   │ - RESPONSE_SYSTEM_PROMPT & QUERY_SYSTEM_PROMPT define "system" instructions for LLM         │  │
-                 │   │ - load_chat_model(...) returns a BaseChatModel (e.g. openai/gpt-4o)                          │  │
-                 │   │ - ChatPromptTemplate structures messages for the LLM call                                    │  │
-                 │   │ - The "respond" node uses "configuration.response_system_prompt" and "configuration.response_model"  
-                 │   └─────────────────────────────────────────────────────────────────────────────────────────────┘  │
-                 │                                                                                                   │
+                 ┌──────────────────────────────────────────────────┴──────────────────────────────────────────────────┐
+                 │                                   mirror-agent "RetrievalGraph"                                     │
+                 │           (Défini dans src/retrieval_graph/graph.py, compilé dans `graph`)                          │
+                 │                                                                                                     │
+                 │   ┌─────────────────────────────────────────────────────────────────────────────────────────────┐   │
+                 │   │  Nœuds du Flux (StateGraph de langgraph.graph)                                              │   │
+                 │   │---------------------------------------------------------------------------------------------│   │
+                 │   │                                                                                             │   │
+                 │   │  1) "__start__" ────────────────────> "should_retrieve" (fonction should_retrieve)          │   │
+                 │   │                               │ (décide s'il faut chercher des documents ou continuer)      │   │
+                 │   │                               └────────────────────────────────────────────────────────────▶│   │
+                 │   │                                                                                             │   │
+                 │   │  2) "should_retrieve" ──(si next="retrieve")─> "generate_query" (fonction generate_query)   │   │
+                 │   │                       └─(si next="respond")──> "should_reason" (fonction should_reason)     │   │
+                 │   │                                                                                             │   │
+                 │   │  3) "generate_query" ─────────────────────────────────────────────────────┬───────────────▶ │   │
+                 │   │       (utilise ChatPromptTemplate & LLM pour formuler une requête)        │                 │   │
+                 │   │                                                                           │ (queries)       │   │
+                 │   │  4) "retrieve" (fonction retrieve)                                        ▼                 │   │
+                 │   │       (exécute la recherche via make_retriever(...) -> ainvoke)     "retrieved_docs"        │   │
+                 │   │       puis dirige vers ──────────────────────────────────────────────> "should_reason"      │   │
+                 │   │                                                                                             │   │
+                 │   │  5) "should_reason" ────(si next="reason")───> "apply_reasoning" (Gemini 2.0 Flash Thinking)│   │
+                 │   │                     └───(si next="respond")──> "respond"                                    │   │
+                 │   │                                                                                             │   │
+                 │   │  6) "apply_reasoning" ───────────────────────> produit `reasoning_trace` ──> "respond"      │   │
+                 │   │                                                                                             │   │
+                 │   │  7) "respond" (fonction respond) ──────────────────────────────────────────────────────────▶│   │
+                 │   │       (génère la réponse socratique finale via LLM, prompt système, docs et raisonnement)   │   │
+                 │   │                                                                                             │   │
+                 │   └─────────────────────────────────────────────────────────────────────────────────────────────┘   │
+                 │                                                                                                     │
+                 │                     Structures de Données Internes & Mémoire (state.py, mem0_client.py)             │
+                 │   ┌─────────────────────────────────────────────────────────────────────────────────────────────┐   │
+                 │   │ class InputState:                                                                           │   │
+                 │   │    - messages: Annotated[Sequence[AnyMessage], reduce_messages] (persisté dans Mem0)        │   │
+                 │   │                                                                                             │   │
+                 │   │ class State(InputState):                                                                    │   │
+                 │   │    - queries: Annotated[list[str], add_queries] (requêtes de recherche générées)            │   │
+                 │   │    - retrieved_docs: list[Document]             (documents issus du retriever)              │   │
+                 │   │    - next: str                                  (routage : "retrieve"/"reason"/"respond")   │   │
+                 │   │    - reasoning_trace: Optional[str]             (trace analytique de Gemini Thinking)       │   │
+                 │   └─────────────────────────────────────────────────────────────────────────────────────────────┘   │
+                 │                                                                                                     │
+                 │                        Intégration des Prompts & LLM (prompts.py, utils.py)                         │
+                 │   ┌─────────────────────────────────────────────────────────────────────────────────────────────┐   │
+                 │   │ - RESPONSE_SYSTEM_PROMPT & QUERY_SYSTEM_PROMPT définissent les instructions système         │   │
+                 │   │ - load_chat_model(...) charge un BaseChatModel (ex. openai/gpt-4o)                          │   │
+                 │   │ - apply_reasoning utilise le SDK Google GenAI (gemini-2.0-flash-thinking-exp-01-21)         │   │
+                 │   │ - Le nœud "respond" combine retrieved_docs + reasoning_trace + messages                     │   │
+                 │   └─────────────────────────────────────────────────────────────────────────────────────────────┘   │
+                 │                                                                                                     │
                  └─────────────────────────────────────────────────────────────────────────────────────────────────────┘
                                                                     │
-                                                                    │ (2) calls "retriever" logic with config
+                                                                    │ (2) appelle la logique "retriever" avec la config
                                                                     ▼
         ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-        │                                          retrieval.py : make_retriever(...)                                            │
-        │                                                                                                                        │
-        │  This module dynamically creates a VectorStoreRetriever from the chosen provider:                                      │
-        │     - "elastic" / "elastic-local" (Elasticsearch)                                                                      │
-        │     - "pinecone" (Pinecone Vector DB)                                                                                  │
-        │     - "mongodb" (MongoDB Atlas Vector Search)                                                                          │
-        │                                                                                                                        │
-        │  Steps:                                                                                                                │
-        │  1) Read user config (IndexConfiguration or Configuration) from runnable config                                        │
-        │  2) Instantiate embeddings (make_text_encoder(...)), e.g. "openai/text-embedding-3-small"                              │
-        │  3) Connect to the appropriate vector store backend                                                                    │
-        │  4) yield a .as_retriever(...) object to be invoked from the "retrieve" node                                           │
+        │                                          retrieval.py : make_retriever(...)                                             │
+        │                                                                                                                         │
+        │  Ce module crée dynamiquement un VectorStoreRetriever à partir du fournisseur choisi :                                  │
+        │     - "chroma" (Par défaut : ChromaDB local, collection "obsidian", embeddings BAAI/bge-large-en-v1.5 mis en cache)     │
+        │     - "elastic" / "elastic-local" (Elasticsearch)                                                                       │
+        │     - "pinecone" (Base vectorielle Pinecone)                                                                            │
+        │     - "mongodb" (MongoDB Atlas Vector Search)                                                                           │
+        │                                                                                                                         │
+        │  Étapes :                                                                                                               │
+        │  1) Lecture de la configuration utilisateur (IndexConfiguration ou Configuration) depuis RunnableConfig                 │
+        │  2) Instanciation des embeddings (make_text_encoder(...) ou load_embeddings_model(...) avec cache local)                │
+        │  3) Connexion à la base vectorielle cible (k=20 par défaut pour Chroma)                                                 │
+        │  4) Enveloppement avec create_compressed_retriever(...) utilisant CohereRerank ("rerank-english-v3.0")                  │
+        │  5) Fourniture (yield) du retriever au nœud "retrieve"                                                                  │
         └─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
                                                                     │
-                                                                    │ (3) obtains relevant docs
+                                                                    │ (3) obtient les documents pertinents (re-rankés)
                                                                     ▼
                                 ┌───────────────────────────────────────────────────────────────────────────────────┐
-                                │                Retrieved Documents                                              │
-                                │    - Document objects from langchain_core.documents.Document                    │
-                                │    - Possibly contain "page_content", "metadata" incl. "user_id"                │
+                                │                        Documents Récupérés                                        │
+                                │    - Objets Document de langchain_core.documents.Document                         │
+                                │    - Contiennent "page_content" et "metadata" (incluant "user_id", source, etc.)  │
                                 └───────────────────────────────────────────────────────────────────────────────────┘
                                                                     │
-                                                                    │ (4) final LLM step to produce answer
+                                                                    │ (4) étape optionnelle de raisonnement + LLM final
                                                                     ▼
                   ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-                  │                                    mirror-agent "Respond" Node                                       │
-                  │                                         (from graph.py : respond)                                    │
-                  │ - Combines conversation messages, system prompts, and retrieved_docs into the final LLM call         │
-                  │ - The "response_model" is loaded from the "Configuration" (e.g. openai/gpt-4o)                        │
-                  │ - Output is appended as an AIMessage back to the conversation "messages"                              │
-                  │ - Control returns to user with the answer                                                             │
+                  │                           Nœuds "apply_reasoning" & "respond" (graph.py)                                │
+                  │ - Si should_reason="reason" : apply_reasoning génère une analyse étape par étape (`reasoning_trace`)    │
+                  │ - respond combine l'historique des messages, les prompts système, retrieved_docs et reasoning_trace     │
+                  │ - Le modèle "response_model" est chargé depuis "Configuration" (par défaut : openai/gpt-4o)             │
+                  │ - La sortie est ajoutée comme AIMessage dans "messages" (et sauvegardée dans Mem0 via reduce_messages)  │
                   └─────────────────────────────────────────────────────────────────────────────────────────────────────────┘
                                                                     │
-                                                                    │ (5) final answer
+                                                                    │ (5) réponse finale
                                                                     ▼
                                                     ┌───────────────────────────────────────────────────┐
-                                                    │                  User Interface                   │
-                                                    │  <--- Receives final answer from "respond"       │
+                                                    │               Interface Utilisateur               │
+                                                    │  <--- Reçoit la réponse finale de "respond"       │
                                                     └───────────────────────────────────────────────────┘
 
 
-                                                 ( Parallel Pipeline for Document Indexing )
+                                          ( Pipeline Parallèle pour l'Indexation de Documents )
 ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                                                                                                                │
-│    ┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐  │
-│    │                                              mirror-agent "IndexGraph"                                                  │  │
-│    │               (Defined in src/retrieval_graph/index_graph.py, compiled to `index_graph`)                                │  │
-│    │                                                                                                                         │  │
-│    │  Flow Node (StateGraph with input=IndexState):                                                                          │  │
-│    │                                                                                                                         │  │
-│    │     "__start__"  ─────>  "index_docs"(index_docs function)  ───────────────────────────────────────────────────────────▶  │
-│    │               - Takes state.docs (Sequence[Document])                                                                   │  │
-│    │               - Ensures user_id is in metadata (ensure_docs_have_user_id(...))                                          │  │
-│    │               - Adds them to the vector store (retriever.aadd_documents(...))                                           │  │
-│    │               - Returns {"docs": "delete"} to signal clearing docs from state                                           │  │
-│    │                                                                                                                         │  │
-│    └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  │
-│                                                                                                                                │
-│    ┌───────────────────────────────────────────── IndexState (from state.py) ─────────────────────────────────────────────────┐  │
-│    │  @dataclass                                                                                                            │  │
-│    │  class IndexState:                                                                                                     │  │
-│    │     docs: Annotated[Sequence[Document], reduce_docs]                                                                   │  │
-│    └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  │
-│                                                                                                                                │
-│       (Example flow: Obsidian Monitor or external app triggers indexing → sends documents → index_graph → makes them queryable) │
+│                                                                                                                                    │
+│    ┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐   │
+│    │                                              mirror-agent "IndexGraph"                                                    │   │
+│    │               (Défini dans src/retrieval_graph/index_graph.py, compilé dans `graph`)                                      │   │
+│    │                                                                                                                           │   │
+│    │  Nœud du Flux (StateGraph avec input=IndexState) :                                                                        │   │
+│    │                                                                                                                           │   │
+│    │     "__start__"  ─────>  "index_docs" (fonction index_docs)  ───────────────────────────────────────────────────────────▶ │   │
+│    │               - Prend state.docs (Sequence[Document], préalablement enregistrés dans Mem0 via reduce_docs)                │   │
+│    │               - Garantit la présence de user_id dans les métadonnées (ensure_docs_have_user_id(...))                      │   │
+│    │               - Les ajoute à la base vectorielle (await retriever.aadd_documents(...))                                    │   │
+│    │               - Retourne {"docs": "delete"} pour vider la liste des documents de l'état courant                           │   │
+│    │                                                                                                                           │   │
+│    └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘   │
+│                                                                                                                                    │
+│    ┌───────────────────────────────────────────── IndexState (depuis state.py) ────────────────────────────────────────────────┐   │
+│    │  @dataclass                                                                                                               │   │
+│    │  class IndexState:                                                                                                        │   │
+│    │     docs: Annotated[Sequence[Document], reduce_docs]                                                                      │   │
+│    └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘   │
+│                                                                                                                                    │
+│       (Exemple de flux : Obsidian Monitor ou une requête API déclenche l'indexation → index_docs → documents interrogeables)       │
 └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
 
                     ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-                    │                                       Configuration Classes                                           │
-                    │                            (from configuration.py : IndexConfiguration, Configuration)                │
-                    │   - Both store settings such as:                                                                     │
-                    │        user_id, embedding_model, retriever_provider, search_kwargs, etc.                              │
-                    │   - Configuration extends IndexConfiguration: adds LLM model names, system prompts                    │
-                    │   - from_runnable_config(...) merges a RunnableConfig with these dataclass fields                    │
+                    │                                      Classes de Configuration                                           │
+                    │                          (depuis configuration.py : IndexConfiguration, Configuration)                  │
+                    │   - IndexConfiguration stocke :                                                                         │
+                    │        user_id ("1"), embedding_model (None), retriever_provider ("chroma"), search_kwargs ({})         │
+                    │   - Configuration hérite de IndexConfiguration et ajoute :                                              │
+                    │        response_model ("openai/gpt-4o"), query_model ("openai/gpt-4o"),                                 │
+                    │        reasoning_model ("gemini-2.0-flash-thinking-exp-01-21"), et les prompts système                  │
+                    │   - from_runnable_config(...) fusionne un RunnableConfig avec les champs de la dataclass                │
                     └─────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
                     ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-                    │                                     Utility Functions (utils.py)                                       │
-                    │   - get_message_text(msg): extracts string content from AnyMessage                                   │
-                    │   - format_docs(docs): returns an <documents> ... </documents> XML wrapper for LLM consumption         │
-                    │   - load_chat_model(name): creates a BaseChatModel from e.g. openai/gpt-4o                             │
+                    │                                   Client Mémoire Mem0 (mem0_client.py)                                  │
+                    │   - Mem0Memory gère la persistance via l'API mem0.ai (filtré par user_id, agent_id, app_id, run_id)     │
+                    │   - add_memory / add_message / add_document : enregistre souvenirs, messages et documents               │
+                    │   - get_messages : reconstruit HumanMessage / AIMessage / SystemMessage via MESSAGE_TYPES               │
+                    │   - get_documents : reconstruit les objets Document avec gestion d'erreurs isolée et logging structuré  │
+                    └─────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+                    ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+                    │                                   Fonctions Utilitaires (utils.py)                                      │
+                    │   - get_message_text(msg) : extrait le contenu textuel d'un AnyMessage (str, dict ou liste)             │
+                    │   - format_docs(docs) : enveloppe les documents dans une balise XML <documents> ... </documents>        │
+                    │   - load_chat_model(name) : initialise un BaseChatModel à partir du format "provider/model"             │
                     └─────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
 
 ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│     Additional Tools & Context:                                                                                                 │
-│     - Environment variables used for credentials (e.g. ELASTICSEARCH_API_KEY, PINECONE_INDEX_NAME, MONGODB_URI, etc.)           │
-│     - Logging and local "tests/" show how to run with ephemeral "elastic-local"                                                 │
-│     - docs/architecture.md outlines high-level Mirror Agent architecture with Obsidian -> Indexer -> Pinecone -> Retrieval      │
-│     - The entire system is built on top of langchain_core, langgraph, and supports advanced config for embeddings & providers    │
+│     Outils Complémentaires & Contexte (`utils/`, `tools/`) :                                                                       │
+│     - Surveillance et indexation Obsidian : `utils/obsidian_monitor.py`, `utils/obsidian_indexer.py`, `utils/file_watcher.py`      │
+│     - Journalisation structurée GCP : `utils/gcp_logging.py`                                                                       │
+│     - Évaluation de la pipeline RAG : `utils/eval_rag_pipeline.py`, `utils/generate_synthetic_questions.py`                        │
+│     - Génération de documentation : `tools/docs_generator.py`                                                                      │
 └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
 
+## Résumé des Interactions Clés
 
-   Summary of Key Interactions:
-   1. **User** sends a message (or doc for indexing).
-   2. **IndexGraph** (if docs) or **RetrievalGraph** (if user question).
-   3. For retrieval:
-       - Node "should_retrieve" decides if we skip retrieval or proceed to "generate_query" → "retrieve".
-       - The "retrieve" node uses make_retriever(...) which depends on user’s embedding & vector DB config.
-       - "respond" composes final answer from conversation history & retrieved docs.
-   4. For indexing:
-       - "index_docs" ensures user_id is in doc metadata, then calls retriever.aadd_documents(...) to store them.
-       - The doc database (e.g., Pinecone) is updated, so subsequent retrieval queries can reference these new docs.
-   5. Configuration classes unify user settings, embedding model, and retriever providers for both pipelines.
-   6. Utility modules handle prompts, message formatting, date/time, and doc processing, hooking into the LLM.
+1. **Entrée Utilisateur** : L'utilisateur envoie un message (ou des documents à indexer) via LangGraph Studio / SDK.
+2. **Aiguillage du Graphe** : `IndexGraph` est appelé pour l'ingestion de documents ; `RetrievalGraph` est appelé pour la conversation.
+3. **Décision et Recherche (`RetrievalGraph`)** :
+   - Le nœud `should_retrieve` détermine si la question nécessite un contexte personnel (`"retrieve"`) ou non (`"respond"`).
+   - Si `"retrieve"`, `generate_query` formule une requête optimisée et `retrieve` interroge la base vectorielle configurée via `make_retriever(...)` (par défaut **ChromaDB** + re-ranking **CohereRerank**).
+4. **Raisonnement Analytique** :
+   - Le nœud `should_reason` évalue si la requête exige une analyse complexe, logique ou multi-étapes.
+   - Si `"reason"`, `apply_reasoning` appelle **Gemini 2.0 Flash Thinking** (`gemini-2.0-flash-thinking-exp-01-21`) et stocke sa réflexion dans `state.reasoning_trace`.
+5. **Génération de la Réponse Socratique** :
+   - Le nœud `respond` assemble l'historique des messages, les documents récupérés (`retrieved_docs`) et la trace de raisonnement (`reasoning_trace`) pour générer une réponse socratique via `response_model` (`openai/gpt-4o`).
+6. **Persistance dans Mem0** :
+   - À chaque mise à jour de l'état, les réducteurs `reduce_messages` et `reduce_docs` synchronisent les messages et documents avec `mem0.ai` via `Mem0Memory`.

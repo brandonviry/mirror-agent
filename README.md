@@ -1,6 +1,6 @@
-# Mirror Agent - Your AI Guide to Self-Reflection
+# Mirror Agent — Votre Guide IA pour l'Introspection
 
-Mirror Agent is an AI companion designed to help you understand yourself better through guided introspection and meaningful dialogue. Built on **LangGraph**, **LangChain**, **ChromaDB**, and **Mem0**, it combines Socratic questioning, persistent long-term memory, personal document retrieval (e.g., Obsidian notes), and multi-step reasoning.
+**Mirror Agent** est un compagnon IA conçu pour vous aider à mieux vous comprendre grâce à une introspection guidée et un dialogue socratique. Construit avec **LangGraph**, **LangChain**, **ChromaDB** et **Mem0**, il combine questionnement socratique, mémoire persistante à long terme, recherche dans vos documents personnels (ex. notes Obsidian) et raisonnement analytique multi-étapes.
 
 ---
 
@@ -20,126 +20,135 @@ Mirror Agent is an AI companion designed to help you understand yourself better 
 
 ---
 
-## Architecture & Workflow
+## Architecture & Flux d'Exécution
 
-Instead of a single monolithic script, Mirror Agent is structured as two **LangGraph** state graphs configured in [`langgraph.json`](./langgraph.json):
+Plutôt qu'un script monolithique unique, Mirror Agent est structuré autour de deux graphes d'état **LangGraph** déclarés dans [`langgraph.json`](./langgraph.json) :
 
-1. **`retrieval_graph` ([`src/retrieval_graph/graph.py`](./src/retrieval_graph/graph.py))**: The main conversational and reasoning pipeline.
-2. **`indexer` ([`src/retrieval_graph/index_graph.py`](./src/retrieval_graph/index_graph.py))**: The document ingestion pipeline.
+1. **`retrieval_graph` ([`src/retrieval_graph/graph.py`](./src/retrieval_graph/graph.py))** : Le pipeline principal de conversation, de recherche documentaire et de raisonnement.
+2. **`indexer` ([`src/retrieval_graph/index_graph.py`](./src/retrieval_graph/index_graph.py))** : Le pipeline d'ingestion et d'indexation des documents.
 
 ```mermaid
 flowchart TD
-    Start(["__start__"]) --> ShouldRetrieve["should_retrieve\n(Decide if personal context is needed)"]
-    ShouldRetrieve -- "retrieve" --> GenerateQuery["generate_query\n(Formulate search query)"]
-    GenerateQuery --> Retrieve["retrieve\n(Search ChromaDB / Vector Store)"]
-    Retrieve --> ShouldReason["should_reason\n(Check if complex analysis is needed)"]
+    Start(["__start__"]) --> ShouldRetrieve["should_retrieve\n(Décide si le contexte personnel est nécessaire)"]
+    ShouldRetrieve -- "retrieve" --> GenerateQuery["generate_query\n(Formule la requête de recherche)"]
+    GenerateQuery --> Retrieve["retrieve\n(Recherche ChromaDB + CohereRerank)"]
+    Retrieve --> ShouldReason["should_reason\n(Vérifie si une analyse complexe est requise)"]
     ShouldRetrieve -- "respond" --> ShouldReason
     ShouldReason -- "reason" --> ApplyReasoning["apply_reasoning\n(Gemini 2.0 Flash Thinking)"]
-    ApplyReasoning --> Respond["respond\n(Generate final Socratic response)"]
+    ApplyReasoning --> Respond["respond\n(Génère la réponse socratique finale)"]
     ShouldReason -- "respond" --> Respond
 ```
 
-### Key Components
-- [`src/retrieval_graph/graph.py`](./src/retrieval_graph/graph.py): Conditional routing between retrieval, reasoning (`gemini-2.0-flash-thinking-exp-01-21`), and response generation (`openai/gpt-4o`).
-- [`src/retrieval_graph/state.py`](./src/retrieval_graph/state.py): Graph state management (`State`, `InputState`, `IndexState`) backed by Mem0 reducers (`reduce_messages`, `reduce_docs`).
-- [`src/retrieval_graph/mem0_client.py`](./src/retrieval_graph/mem0_client.py): Client wrapper around `mem0.ai` for storing and retrieving user memories, messages, and documents.
-- [`utils/obsidian_monitor.py`](./utils/obsidian_monitor.py) & [`utils/obsidian_indexer.py`](./utils/obsidian_indexer.py): Automatic monitoring and indexing of local Obsidian markdown notes into ChromaDB.
+### Composants Clés
+- [`src/retrieval_graph/graph.py`](./src/retrieval_graph/graph.py) : Routage conditionnel entre la recherche documentaire, le raisonnement analytique (`gemini-2.0-flash-thinking-exp-01-21`) et la génération de réponse (`openai/gpt-4o`).
+- [`src/retrieval_graph/state.py`](./src/retrieval_graph/state.py) : Gestion de l'état du graphe (`State`, `InputState`, `IndexState`) persisté via les réducteurs Mem0 (`reduce_messages`, `reduce_docs`).
+- [`src/retrieval_graph/mem0_client.py`](./src/retrieval_graph/mem0_client.py) : Client autour de `mem0.ai` (`Mem0Memory`) pour stocker et récupérer les souvenirs, messages et documents de l'utilisateur.
+- [`src/retrieval_graph/retrieval.py`](./src/retrieval_graph/retrieval.py) : Création dynamique du retriever (ChromaDB par défaut avec embeddings `BAAI/bge-large-en-v1.5` mis en cache et compression contextuelle `CohereRerank`, ainsi que le support d'Elasticsearch, Pinecone et MongoDB).
+- [`utils/obsidian_monitor.py`](./utils/obsidian_monitor.py) & [`utils/obsidian_indexer.py`](./utils/obsidian_indexer.py) : Surveillance et indexation automatiques des notes Markdown Obsidian locales dans ChromaDB.
+
+### Documentation du Projet (`docs/`)
+- [`docs/project_plan.md`](./docs/project_plan.md) : Plan de projet complet, architecture et suivi des phases.
+- [`docs/o1_architecture.md`](./docs/o1_architecture.md) : Schéma d'architecture détaillé des flux `RetrievalGraph` et `IndexGraph`.
+- [`docs/mem0ai-llm-summary.md`](./docs/mem0ai-llm-summary.md) : Guide d'utilisation et spécifications du client `Mem0Memory`.
+- [`docs/jxnl_co_writing_2024_05_22_systematically-improving-your-rag__docs.md`](./docs/jxnl_co_writing_2024_05_22_systematically-improving-your-rag__docs.md) : Synthèse en français des méthodes d'amélioration systématique d'un pipeline RAG.
+- [`docs/weave-docs_wandb_ai__docs.md`](./docs/weave-docs_wandb_ai__docs.md) : Documentation de Weave (Weights & Biases) utilisé pour l'évaluation RAG (`utils/eval_rag_pipeline.py`).
 
 ---
 
-## Getting Started (Setup & First Launch)
+## Démarrage Rapide (Installation & Lancement)
 
 > [!IMPORTANT]
-> **No `main.py` file**: Earlier documentation referenced `python main.py`, which does not exist in this repository. Because this project is a **LangGraph** application defined in [`langgraph.json`](./langgraph.json), it is launched via the **LangGraph CLI (`langgraph dev`)** or tested via `pytest` / `unittest`.
+> **Absence de fichier `main.py`** : Les anciennes versions de la documentation mentionnaient `python main.py`, qui n'existe pas dans ce dépôt. Ce projet étant une application **LangGraph** définie dans [`langgraph.json`](./langgraph.json), il se lance via le **CLI LangGraph (`langgraph dev`)** ou se vérifie via `pytest` / `unittest`.
 
-### 1. Create a Virtual Environment & Install Dependencies
+### 1. Créer un Environnement Virtuel & Installer les Dépendances
 
 ```powershell
-# Clone your fork
+# Cloner le fork
 git clone https://github.com/brandonviry/mirror-agent.git
 cd mirror-agent
 
-# Create and activate virtual environment
+# Créer et activer l'environnement virtuel
 python -m venv .venv
-# Windows (PowerShell):
+# Windows (PowerShell) :
 .\.venv\Scripts\Activate.ps1
-# macOS / Linux:
+# macOS / Linux :
 source .venv/bin/activate
 
-# Install the package in editable mode with required tools
+# Installer le paquet en mode éditable ainsi que les outils requis
 pip install -e .
 pip install mem0ai "langgraph-cli[inmem]" pytest
 ```
 
-### 2. Configure Environment Variables (`.env`)
+### 2. Configurer les Variables d'Environnement (`.env`)
 
-Copy [`.env.example`](./.env.example) to `.env` and fill in your credentials:
+Copiez [`.env.example`](./.env.example) vers `.env` et renseignez vos clés API :
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-| Variable | Required | Description |
+| Variable | Obligatoire | Description |
 | :--- | :---: | :--- |
-| `OPENAI_API_KEY` | Yes | Used by default for `query_model` and `response_model` (`openai/gpt-4o`) |
-| `GOOGLE_API_KEY` | If reasoning | Used by `apply_reasoning` (`gemini-2.0-flash-thinking-exp-01-21`) |
-| `MEM0_API_KEY` | Yes | Your [mem0.ai](https://mem0.ai) API key |
-| `MEM0_ORG_ID` | Yes | Your Mem0 Organization ID |
-| `MEM0_PROJECT_ID` | Yes | Your Mem0 Project ID |
-| `MEM0_USER_ID` | **Yes (at import)** | Unique user ID (e.g., `test-user`). Checked immediately when `Mem0Memory` initializes |
-| `MEM0_APP_ID` | Optional | Defaults to `mirror-agent` |
-| `MEM0_RUN_ID` | Optional | Defaults to `test-run` |
+| `OPENAI_API_KEY` | Oui | Utilisée par défaut pour `query_model` et `response_model` (`openai/gpt-4o`) |
+| `GOOGLE_API_KEY` | Si raisonnement | Utilisée par `apply_reasoning` (`gemini-2.0-flash-thinking-exp-01-21`) |
+| `MEM0_API_KEY` | Oui | Votre clé API [mem0.ai](https://mem0.ai) |
+| `MEM0_ORG_ID` | Oui | Votre identifiant d'organisation Mem0 |
+| `MEM0_PROJECT_ID` | Oui | Votre identifiant de projet Mem0 |
+| `MEM0_USER_ID` | **Oui (à l'import)** | Identifiant unique de l'utilisateur (ex. `test-user`). Vérifié dès l'initialisation de `Mem0Memory` |
+| `MEM0_APP_ID` | Optionnel | Valeur par défaut : `mirror-agent` |
+| `MEM0_RUN_ID` | Optionnel | Valeur par défaut : `test-run` |
+| `COHERE_API_KEY` | Optionnel | Utilisée par `CohereRerank` (`rerank-english-v3.0`) pour la compression contextuelle |
 
-### 3. Launch or Test the Project
+### 3. Lancer ou Tester le Projet
 
-**Option A — Launch with LangGraph Studio / Dev Server:**
+**Option A — Lancer avec LangGraph Studio / Serveur de Développement :**
 ```powershell
 langgraph dev
 ```
 
-**Option B — Run Static Verification & Unit Tests:**
+**Option B — Exécuter la Vérification Statique & les Tests Unitaires :**
 ```powershell
-# Syntax & compilation check (no API keys required)
+# Vérification syntaxique et compilation (aucune clé API requise)
 python -m py_compile src/retrieval_graph/mem0_client.py
 
-# Unit tests
+# Tests unitaires
 pytest tests/unit_tests
 
-# Mem0 integration tests (requires valid MEM0_* keys in .env)
+# Tests d'intégration Mem0 (nécessite des clés MEM0_* valides dans .env)
 python -m unittest tests/test_mem0_integration.py
 ```
 
 ---
 
-## Code Improvements: `mem0_client.py` Refactoring
+## Améliorations du Code : Refactoring de `mem0_client.py`
 
-In [`src/retrieval_graph/mem0_client.py`](./src/retrieval_graph/mem0_client.py), `get_messages()` and `get_documents()` were refactored to fix critical runtime and testing issues:
+Dans [`src/retrieval_graph/mem0_client.py`](./src/retrieval_graph/mem0_client.py), les méthodes `get_messages()` et `get_documents()` ont été refactorisées afin de corriger plusieurs problèmes critiques d'exécution et de testabilité :
 
-1. **Fixed `AnyMessage` Instantiation Bug (`TypeError: Cannot instantiate typing.Union`)**:
-   - *Before*: `get_messages()` called `AnyMessage(content=..., type=..., additional_kwargs=...)`. In `langchain_core.messages`, `AnyMessage` is a `typing.Union` type alias, **not** an instantiable class. When wrapped in a broad `try...except`, the `TypeError` was silently caught and `get_messages()` always returned `[]`, causing test assertions (`self.assertTrue(...)` in [`tests/test_mem0_integration.py`](./tests/test_mem0_integration.py)) to fail.
-   - *After*: Mapped `metadata["message_type"]` via `MESSAGE_TYPES` to concrete LangChain message classes (`HumanMessage`, `AIMessage`, `SystemMessage`).
+1. **Correction du Bug d'Instanciation `AnyMessage` (`TypeError: Cannot instantiate typing.Union`)** :
+   - *Avant* : `get_messages()` appelait `AnyMessage(content=..., type=..., additional_kwargs=...)`. Dans `langchain_core.messages`, `AnyMessage` est un alias de type `typing.Union` et **non** une classe instanciable. Englobée dans un `try...except` générique, l'exception `TypeError` était silencieusement capturée et `get_messages()` retournait systématiquement `[]`, faisant échouer les assertions de [`tests/test_mem0_integration.py`](./tests/test_mem0_integration.py).
+   - *Après* : Association de `metadata["message_type"]` via le dictionnaire `MESSAGE_TYPES` vers les classes concrètes de LangChain (`HumanMessage`, `AIMessage`, `SystemMessage`).
 
-2. **Granular Error Isolation (Storage vs. Item Parsing)**:
-   - *Before*: A single `try...except` block wrapped both `self.get_memories(...)` and the entire `for memory in memories:` loop. A single malformed entry aborted the loop.
-   - *After*: Network/API failures in `self.get_memories(...)` are caught separately from per-item parsing errors, so a single corrupted memory entry is skipped without losing the rest of the conversation history.
+2. **Isolation Granulaire des Erreurs (Stockage vs Parsing d'un Élément)** :
+   - *Avant* : Un seul bloc `try...except` entourait à la fois l'appel réseau `self.get_memories(...)` et toute la boucle `for memory in memories:`. Une seule entrée malformée interrompait la récupération de tout l'historique.
+   - *Après* : Les erreurs réseau/API de `self.get_memories(...)` sont capturées séparément des erreurs de parsing propres à chaque entrée, permettant d'ignorer un élément corrompu sans perdre le reste de la conversation.
 
-3. **Structured Logging instead of `print()` (Ruff `T201` Compliance)**:
-   - *Before*: Used `print(f"Error retrieving messages: {e}")`, which violated the project's Ruff `T201` (`flake8-print`) rule in [`pyproject.toml`](./pyproject.toml) and discarded the stack trace.
-   - *After*: Uses `logger.exception(...)` and `logger.warning(...)` from Python's standard `logging` module.
+3. **Journalisation Structurée au lieu de `print()` (Conformité Ruff `T201`)** :
+   - *Avant* : Utilisait `print(f"Error retrieving messages: {e}")`, ce qui enfreignait la règle Ruff `T201` (`flake8-print`) configurée dans [`pyproject.toml`](./pyproject.toml) et masquait la trace d'exécution (stack trace).
+   - *Après* : Utilise `logger.exception(...)` et `logger.warning(...)` via le module standard `logging` de Python.
 
-4. **Null-Safe Metadata & Payload Extraction**:
-   - *Before*: `memory.get("metadata", {}).get(...)` raised `AttributeError` if `"metadata"` existed in the dictionary with a value of `None`.
-   - *After*: Explicitly validates `isinstance(metadata, dict)` and supports both `"text"` and `"memory"` payload keys.
+4. **Extraction Défensive des Métadonnées et du Contenu (`Null-Safe`)** :
+   - *Avant* : `memory.get("metadata", {}).get(...)` levait une `AttributeError` si la clé `"metadata"` était présente dans le dictionnaire avec la valeur `None`.
+   - *Après* : Vérifie explicitement `isinstance(metadata, dict)` et prend en charge les clés de contenu `"text"` et `"memory"`.
 
 ---
 
-## Core Features
+## Fonctionnalités Principales
 
-- **Model-Agnostic Architecture**: Choose your preferred LLM backend (`openai`, `anthropic`, `fireworks`, `google`).
-- **Memory System**: Persistent long-term memory via Mem0.
-- **Document Integration**: References personal documents and Obsidian vaults via ChromaDB.
-- **Reflective Intelligence**: Identifies patterns and insights using dedicated reasoning models.
+- **Architecture Indépendante du Modèle** : Choisissez votre fournisseur LLM préféré (`openai`, `google`, `anthropic`, `fireworks`).
+- **Système de Mémoire Persistante** : Mémoire à long terme gérée via Mem0 (`mem0.ai`).
+- **Intégration Documentaire & Obsidian** : Indexation et interrogation de vos notes personnelles via ChromaDB et re-ranking Cohere.
+- **Intelligence Réflexive** : Identification des schémas de pensée et décomposition analytique via des modèles de raisonnement dédiés (`Gemini 2.0 Flash Thinking`).
 
-## Credits
+## Crédits
 
-Originally created by [@daniel_mac8](https://twitter.com/daniel_mac8).
+Créé originellement par [@daniel_mac8](https://twitter.com/daniel_mac8).
